@@ -1,0 +1,639 @@
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --text: #1f1e1b; --muted: #6b6a64; --border: #e3e1d8;
+  --accent: #534ab7; --accent-bg: #eeedfe;
+  --grid: #e4e2da;
+  --working: #1d9e75; --waiting: #d98a1c; --done: #2f7fd0; --idle: #8a8983; --ended: #b4b2aa; --fail: #d1453b;
+  --waiting-bg: #faeeda;
+  --island: #eceae3;
+  --guide: #c0398f; --guide-bg: #fbe8f3; /* onboarding only (onboarding.md "Look") */
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1b19; --panel: #252523; --text: #ecebe6; --muted: #9c9b94; --border: #3a3a37;
+    --accent: #afa9ec; --accent-bg: #2e2a5c;
+    --grid: #2b2b28;
+    --working: #4fd1a5; --waiting: #f5b24a; --done: #6fb0f0; --idle: #a3a29b; --ended: #5f5e59; --fail: #f07167;
+    --waiting-bg: #4a3108;
+    --island: #242422;
+    --guide: #f08ac8; --guide-bg: #4a1d3a;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; background: var(--bg); color: var(--text); }
+
+.empty { color: var(--muted); font-size: 13px; margin: 0; }
+input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
+button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px; padding: 4px 10px; }
+button.ghost { border: 0; background: none; color: var(--muted); text-align: left; padding: 0; font-size: 13px; }
+.error { color: #c0392b; font-size: 12px; margin: 0; }
+
+/* Status dot */
+.dot { --c: var(--idle); position: relative; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.dot.st-working { --c: var(--working); }
+.dot.st-waiting { --c: var(--waiting); }
+.dot.st-done { --c: var(--done); }
+.dot.st-idle { --c: var(--working); background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
+.dot.st-inactive { --c: var(--ended); }
+.dot.ci-fail { --c: var(--fail); }
+.dot.ci-ready { --c: var(--working); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
+.dot.ci-pass { --c: var(--working); background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
+.dot.ci-pending { --c: var(--waiting); }
+.dot.ci-pending::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--c); animation: pulse 1.8s ease-out infinite; }
+.dot.ci-none { --c: var(--idle); background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
+/* Attention levels (sidebar), shared by all sources */
+.dot.lvl-waiting { --c: var(--waiting); }
+.dot.lvl-waiting::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--c); animation: pulse 1.1s ease-out infinite; }
+.dot.lvl-done { --c: var(--done); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
+.dot.lvl-fail { --c: var(--fail); }
+.dot.lvl-ready { --c: var(--working); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
+.dot.st-working::after, .dot.st-waiting::after { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--c); animation: pulse 1.8s ease-out infinite; }
+.dot.st-waiting::after { animation-duration: 1.1s; }
+.dot.attn { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
+@keyframes pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(2.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .dot::after { animation: none !important; } }
+
+/* Canvas */
+#viewport { position: relative; overflow: hidden; cursor: grab; touch-action: none;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px); }
+#viewport.panning { cursor: grabbing; }
+#world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+/* Islands (frames, ADR-0012). Name and controls keep their screen size: scaled by --inv = 1 / zoom. */
+.frame { position: absolute; border-radius: 28px; background: var(--island); }
+.frame-head { position: absolute; left: 18px; top: 12px; display: flex; align-items: center; gap: 8px; cursor: move;
+  transform: scale(var(--inv, 1)); transform-origin: 0 0; padding: 2px 4px; }
+.frame-name { font-size: 13px; letter-spacing: .06em; color: var(--muted); white-space: nowrap; }
+.frame-head:hover .frame-name { color: var(--text); }
+.frame-add { width: 20px; height: 20px; border-radius: 50%; padding: 0; line-height: 1; font-size: 15px; color: var(--muted);
+  background: transparent; border: 1px solid var(--border); opacity: 0; transition: opacity .2s; }
+.frame:hover .frame-add, .frame.hot .frame-add, .frame.target .frame-add, .frame-add:focus-visible { opacity: 1; }
+/* the plus is drawn, not a glyph: a font's "+" sits off-centre in a round button */
+.frame-add { position: relative; }
+.frame-add::before, .frame-add::after { content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 1.5px; background: currentColor;
+  border-radius: 1px; transform: translate(-50%, -50%); }
+.frame-add::after { transform: translate(-50%, -50%) rotate(90deg); }
+/* the island a menu acts on (e.g. N → Neue Session) */
+.frame.target { box-shadow: 0 0 0 2px var(--accent); }
+.frame.target .frame-name { color: var(--text); }
+/* PRs without a session (ADR-0038): one pill with a word, own ones orange, someone else's outlined; "+x" quiet */
+.frame-prs { display: flex; align-items: center; gap: 4px; }
+.frame-pr { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 9px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+/* the PR's number; its state is the colour (red: CI failing, orange: ready to merge, outlined: review requested) */
+.frame-pr { --c: var(--waiting); }
+.frame-pr.fail { --c: var(--fail); }
+.frame-pr.mine { color: var(--bg); background: var(--c); border: 1px solid var(--c); }
+.frame-pr.foreign { color: var(--c); border: 1px solid var(--c); }
+/* more PRs behind a chip (ADR-0038): an offset rounded box in the chip's line colour; a click lists them */
+.stacked { --stack: var(--border); margin-right: 3px; box-shadow: 3px -3px 0 -1px var(--panel), 3px -3px 0 0 var(--stack); }
+.frame-pr.stacked { --stack: var(--c); }
+.pr-chip.needs.stacked { --stack: var(--waiting); }
+.pr-menu { min-width: 260px; max-width: 420px; }
+.pr-row { display: flex; gap: 8px; align-items: center; padding: 4px 9px; border-radius: 5px; font-size: 13px; color: var(--text); text-decoration: none; }
+.pr-row:hover, .pr-row:focus-visible { background: var(--bg); outline: none; }
+.pr-row-num { flex: none; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); }
+.pr-row-num.fail { color: var(--bg); background: var(--fail); border-color: var(--fail); }
+.pr-row-num.ready { color: var(--bg); background: var(--waiting); border-color: var(--waiting); }
+.pr-row-num.review { color: var(--waiting); border-color: var(--waiting); }
+.pr-row-num.merged { color: var(--working); border-color: color-mix(in srgb, var(--working) 45%, transparent); }
+.pr-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frame-grip { position: absolute; right: 0; bottom: 0; width: 28px; height: 28px; cursor: nwse-resize; }
+.frame-grip::before { content: ""; position: absolute; right: 12px; bottom: 12px; width: 12px; height: 12px; border-right: 1.5px solid var(--border);
+  border-bottom: 1.5px solid var(--border); border-bottom-right-radius: 6px; opacity: 0; transition: opacity .2s; }
+.frame:hover .frame-grip::before { opacity: 1; }
+button.merge, button.primary { background: var(--working); border-color: var(--working); color: #fff; font-weight: 500; }
+button.merge { font-size: 12px; padding: 1px 9px; }
+button.danger { background: var(--fail); border-color: var(--fail); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+.empty-canvas { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); margin: 0; pointer-events: none; }
+/* Board chrome lives in the visible board: zoom dots bottom right, minimap bottom left, edge hints at the edges */
+/* no ring on the board itself: browsers turn it on with every key press; keyboard focus shows on the element (.prio) */
+#viewport:focus-visible { outline: none; }
+.chrome { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px; z-index: 4; }
+.zd { padding: 0; border-radius: 50%; border: 1px solid var(--muted); background: transparent; }
+.zd.l0 { width: 6px; height: 6px; } .zd.l1 { width: 9px; height: 9px; } .zd.l2 { width: 13px; height: 13px; }
+.zd.on { background: var(--muted); }
+.zd:focus-visible { outline: 2px solid var(--waiting); outline-offset: 2px; }
+.minimap { position: absolute; left: 14px; bottom: 14px; width: 190px; height: 112px; z-index: 4; cursor: grab;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.minimap canvas { width: 100%; height: 100%; display: block; }
+/* Atlas level (ADR-0037): islands summarise, no single element; frames stay, so nothing moves */
+#world .element, #world .frame-head, #world .frame-grip, #world svg { transition: opacity .25s; }
+#viewport.atlas-on #world .element, #viewport.atlas-on #world .frame-head, #viewport.atlas-on #world .frame-grip, #viewport.atlas-on #world svg { opacity: 0; pointer-events: none; }
+.atlas { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.atlas-isle { position: absolute; pointer-events: auto; cursor: pointer; background: var(--island); animation: atlas-in .25s ease-out; }
+@keyframes atlas-in { from { opacity: 0; } }
+/* region name, like an atlas: one size for all, spaced capitals, quiet; it structures, the places speak */
+.a-name { position: absolute; font-size: 12px; font-weight: 500; line-height: 1.3; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.atlas-isle:hover .a-name { color: var(--text); }
+/* a place that needs the user: the session glyph's own look — filled when waiting, a ring when done */
+.a-place { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; box-sizing: border-box;
+  background: var(--waiting); box-shadow: 0 0 0 4px color-mix(in srgb, var(--waiting) 22%, transparent); transition: transform .2s; }
+.a-place.ring { background: var(--island); border: 2px solid var(--waiting); box-shadow: none; }
+.a-place:hover { transform: scale(1.3); }
+.atlas-isle.dormant { opacity: .5; }
+/* an island too small for its name: the name on hover, as a bubble of the other levels */
+.a-more { display: none; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); z-index: 3; width: max-content;
+  padding: 6px 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); font-size: 13px; pointer-events: none; }
+.atlas-isle:hover .a-more { display: block; }
+@media (prefers-reduced-motion: reduce) { .atlas-isle { animation: none; } }
+.edges { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.edge { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; display: flex; align-items: center; gap: 6px;
+  max-width: 260px; padding: 2px 10px 2px 7px; border-radius: 12px; border: 1px solid var(--waiting); background: var(--panel);
+  font-size: 12px; white-space: nowrap; }
+.edge i { width: 0; height: 0; border-left: 5px solid var(--waiting); border-top: 4px solid transparent; border-bottom: 4px solid transparent; flex: none; }
+.edge span { overflow: hidden; text-overflow: ellipsis; }
+.edge b { font-weight: 400; color: var(--muted); }
+.edge em { font-style: normal; color: var(--waiting); flex: none; }
+
+/* Session as a dot with name and bubble (docs/design/elements.md). The node is the drag box; only dot, name and bubble take the pointer. */
+.glyphview { pointer-events: none; }
+.glyphview.dragging, .glyphview.prio { z-index: 3; }
+.glyphview .ui { position: absolute; width: 0; height: 0; transform: scale(var(--inv, 1)); transform-origin: 0 0; }
+.glyphview .glyph, .glyphview .lab, .glyphview .bub { pointer-events: auto; }
+.glyphview .glyph { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--idle); transition: transform .2s; }
+/* hover and the element W / Q went to (.prio) look the same */
+.glyphview .glyph:hover, .glyphview.prio .glyph { transform: scale(1.2); }
+.glyphview.g-working .glyph { background: var(--text); border-color: var(--text); }
+.glyphview.g-waiting .glyph { background: var(--waiting); border-color: var(--waiting); box-shadow: 0 0 0 5px color-mix(in srgb, var(--waiting) 22%, transparent); }
+.glyphview.g-done .glyph { border: 2px solid var(--waiting); }
+.glyphview.g-snoozed .glyph { border: 1.5px solid var(--waiting); }
+.glyphview.fresh .glyph::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 1px solid var(--muted); animation: ripple 1.6s ease-out 2; }
+@keyframes ripple { from { opacity: .8; transform: scale(.6); } to { opacity: 0; transform: scale(1.8); } }
+
+.glyphview .lab { position: absolute; top: -10px; display: flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 13px; line-height: 20px;
+  font-weight: 500; color: var(--text); cursor: pointer; opacity: 0; visibility: hidden; transition: opacity .45s, visibility 0s linear .45s;
+  text-shadow: 0 0 3px var(--island), 0 0 6px var(--island); }
+.glyphview .lab[data-side="e"], .glyphview .lab:not([data-side]) { left: 14px; }
+/* a name left of its dot ends hard against the dot's halo; it keeps a wider gap than the east side */
+.glyphview .lab[data-side="w"] { right: 19px; flex-direction: row-reverse; }
+.glyphview .lab-t { overflow: hidden; text-overflow: ellipsis; }
+.glyphview.g-rest .lab { color: var(--muted); font-weight: 400; }
+.glyphview.sl .lab { opacity: 1; visibility: visible; transition: opacity .25s; }
+.glyphview .title-input { font-size: 13px; padding: 0 5px; }
+/* renaming looks like the panel's title field, not like the system's focus ring */
+.title-input { font-family: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; outline: none; }
+
+.glyphview .bub { position: absolute; box-sizing: border-box; width: 300px; display: flex; flex-direction: column; gap: 7px; padding: 9px 12px;
+  border-radius: 12px; background: var(--panel); border: 1px solid var(--border); font-size: 13px; line-height: 1.5; cursor: default;
+  opacity: 0; visibility: hidden; transform: translateY(3px); transition: opacity .5s, transform .5s, visibility 0s linear .5s; }
+/* below the far zoom the glyph layer shrinks (--inv); the bubble undoes it and keeps its size (ADR-0033) */
+.glyphview .bub { scale: var(--ug, 1); }
+.glyphview .bub[data-corner="ne"] { transform-origin: 4px 100%; } .glyphview .bub[data-corner="nw"] { transform-origin: calc(100% - 4px) 100%; }
+.glyphview .bub[data-corner="se"] { transform-origin: 4px 0; } .glyphview .bub[data-corner="sw"] { transform-origin: calc(100% - 4px) 0; }
+.glyphview.sb .bub { opacity: 1; visibility: visible; transform: none; transition: opacity .25s, transform .25s; }
+.glyphview.measuring .bub, .glyphview.measuring .lab { visibility: hidden !important; transition: none !important; display: flex; }
+.glyphview .bub[data-corner="ne"] { left: -4px; bottom: 22px; border-bottom-left-radius: 3px; }
+.glyphview .bub[data-corner="nw"] { right: -4px; bottom: 22px; border-bottom-right-radius: 3px; }
+.glyphview .bub[data-corner="se"] { left: -4px; top: 24px; border-top-left-radius: 3px; }
+.glyphview .bub[data-corner="sw"] { right: -4px; top: 24px; border-top-right-radius: 3px; }
+/* beside its name, level with the dot (placement: besideSpot); board-layout.js moves it past the name with translate */
+.glyphview .bub[data-corner="e"] { left: 14px; top: 0; transform-origin: 0 50%; }
+.glyphview.g-waiting .bub, .glyphview.g-done .bub { border-color: var(--waiting); }
+/* content by depth: 1 = last statement in two lines; 2 = full statement, state, actions; 3 = + where it works, PR */
+.glyphview .bub > * { display: none; }
+.glyphview[data-depth="1"] .b-said { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.glyphview[data-depth="1"] .b-pr, .glyphview[data-depth="1"] .b-act { display: flex; }
+.glyphview[data-depth="2"] .bub > :not(.b-deep), .glyphview[data-depth="3"] .bub > * { display: block; }
+.glyphview[data-depth="2"] .b-pr, .glyphview[data-depth="3"] .b-pr, .glyphview[data-depth="2"] .b-act, .glyphview[data-depth="3"] .b-act { display: flex; }
+.glyphview .b-said { white-space: pre-wrap; max-height: 240px; overflow: hidden; }
+.glyphview .b-meta, .glyphview .b-deep { font-size: 12px; color: var(--muted); }
+.glyphview .b-pr { flex-direction: column; gap: 7px; font-size: 12.5px; color: var(--muted); }
+.glyphview .b-pr, .glyphview .b-act { border-top: 1px solid var(--border); padding-top: 8px; }
+.glyphview .b-pr + .b-act { border-top: 0; padding-top: 0; }
+.glyphview .b-prline { display: flex; align-items: center; gap: 8px; }
+.glyphview .b-btns { gap: 6px; flex-wrap: wrap; }
+.btn { font-size: 12.5px; padding: 3px 10px; border-radius: 5px; }
+.btn.quiet { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.quiet:hover { color: var(--text); border-color: var(--border); }
+.pr-chip.needs { color: var(--waiting); border-color: var(--waiting); }
+.pr-chip.big { font-size: 11.5px; }
+
+/* Small menus at the control that opened them */
+.menu { position: fixed; z-index: 20; min-width: 220px; display: flex; flex-direction: column; padding: 4px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / .1); }
+.menu-title { font-size: 12px; color: var(--muted); padding: 6px 9px 4px; }
+.menu button { text-align: left; border: 0; background: transparent; border-radius: 5px; padding: 4px 9px; font-size: 13px; }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--bg); outline: none; }
+.menu button.danger { background: var(--fail); color: #fff; }
+.menu-sep { height: 1px; background: var(--border); margin: 4px 6px; }
+.toast { position: absolute; top: 14px; right: 14px; max-width: 380px; padding: 10px 14px; border-radius: 10px;
+  background: var(--waiting-bg); color: var(--text); border: 1px solid var(--waiting); font-size: 13px; z-index: 5; }
+/* lasting notice: the installed hook lacks events (ADR-0031) */
+.hook-notice { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); max-width: 560px; padding: 10px 14px;
+  border-radius: 10px; background: var(--waiting-bg); color: var(--text); border: 1px solid var(--waiting); font-size: 13px;
+  line-height: 1.45; z-index: 5; user-select: text; }
+.hook-notice code { white-space: nowrap; font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--panel); }
+/* no hook installed at all (ADR-0041): same place, quiet */
+.hook-notice.quiet { background: var(--bg); border-color: var(--border); color: var(--muted); }
+.hook-notice.quiet code { background: var(--island); color: var(--text); }
+/* first run (onboarding.md): centred on the empty board, no frame */
+.first-run { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(520px, 90%);
+  display: flex; flex-direction: column; gap: 10px; z-index: 3; }
+.first-run p { margin: 0; }
+.fr-lead { font-size: 15px; color: var(--text); }
+.fr-start { color: var(--muted); font-size: 13px; margin-top: 8px !important; }
+.fr-list { display: flex; flex-direction: column; gap: 4px; }
+.fr-folder { display: flex; align-items: baseline; gap: 10px; text-align: left; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+.fr-folder:hover, .fr-folder:focus-visible { border-color: var(--muted); }
+.fr-path { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.fr-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.fr-other { align-self: flex-start; border: none; background: none; color: var(--muted); padding: 4px 0; text-decoration: underline; }
+/* the first-run screen: no chrome that needs islands (onboarding.md stage 1) */
+#viewport.first-run-on :is(.chrome, .minimap, .edges) { display: none; }
+/* a hint (ADR-0041): a small pill in --guide, the colour reserved for onboarding (onboarding.md "Look") */
+.hint { position: absolute; margin: 0; padding: 0 9px 0 8px; height: 20px; box-sizing: border-box; border-radius: 999px; font-size: 12.5px; line-height: 20px;
+  color: var(--guide); background: var(--guide-bg); display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap; pointer-events: none; z-index: 3; animation: guide-in .35s ease-out; }
+.hint::before, .hook-notice.quiet::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--guide); flex: none; }
+.hint[hidden] { display: none; }
+/* the notch points back at the target (data-side: where the pill sits); 8px gap = notch plus a little air */
+.hint::after, .import-line::after { content: ""; position: absolute; width: 0; height: 0; border: 5px solid transparent; }
+.hint[data-side="right"]::after { right: 100%; top: 5px; border-right-color: var(--guide-bg); border-left-width: 0; }
+.hint[data-side="left"]::after { left: 100%; top: 5px; border-left-color: var(--guide-bg); border-right-width: 0; }
+.hint[data-side="above"]::after { top: 100%; left: 11px; border-top-color: var(--guide-bg); border-bottom-width: 0; }
+.hint[data-side="below"]::after { bottom: 100%; left: 11px; border-bottom-color: var(--guide-bg); border-top-width: 0; }
+.import-line::after { bottom: 100%; left: 14px; border-bottom-color: var(--guide-bg); border-top-width: 0; }
+/* the hint's target: a guide ring that pulses three times when the hint appears, then stays still */
+.guide-halo { outline: 2px solid var(--guide); outline-offset: 3px; border-radius: 999px; }
+.guide-halo.guide-pulse { animation: guide-pulse 1s ease-in-out 3; }
+.frame-add.guide-halo { opacity: 1; }
+@keyframes guide-pulse { 50% { outline-offset: 6px; outline-color: color-mix(in srgb, var(--guide) 35%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .guide-halo.guide-pulse { animation: none; } }
+/* what came along with the first island (onboarding.md stage 1b): the hint's look, but with two choices */
+.import-line { position: absolute; margin: 0; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; line-height: 16px;
+  color: var(--guide); background: var(--guide-bg); display: inline-flex; align-items: center; gap: 0; white-space: pre;
+  z-index: 4; animation: guide-in .35s ease-out; }
+.import-line::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--guide); margin-right: 6px; flex: none; }
+.import-line[hidden] { display: none; }
+.import-line button { border: none; background: none; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
+.import-line button.keep { font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .import-line { animation: none; } }
+@keyframes guide-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hint { animation: none; } }
+.hook-notice.quiet::before { display: inline-block; margin-right: 8px; vertical-align: 1px; }
+
+/* Elements (any view) */
+.element { position: absolute; }
+.element.dragging { z-index: 10; cursor: grabbing; }
+.element.flash { animation: flash 1.2s ease-out; }
+
+/* Card view */
+.view-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 11px 13px; display: flex; flex-direction: column; gap: 4px; cursor: default; user-select: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / .04); transition: box-shadow .15s, border-color .15s; }
+.view-card:hover { box-shadow: 0 4px 14px rgb(0 0 0 / .08); }
+.view-card.dragging { box-shadow: 0 10px 30px rgb(0 0 0 / .18); z-index: 10; transition: none; cursor: grabbing; }
+.view-card.attn { border-color: var(--waiting); }
+.view-card.st-inactive { opacity: .6; }
+.view-card.st-inactive:hover { opacity: .9; }
+.view-card.archived { opacity: .45; border-style: dashed; }
+.view-card .card-btn { flex: none; font-size: 11px; padding: 0 7px; border-color: transparent; background: none; color: var(--muted); }
+.view-card .card-btn.icon { font-size: 16px; line-height: 1; padding: 0 4px; visibility: hidden; }
+.view-card:hover .card-btn.icon { visibility: visible; }
+.view-card .card-btn:hover { border-color: var(--border); color: var(--text); }
+.pr-chip { flex: none; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 8px; text-decoration: none;
+  color: var(--muted); border: 1px solid var(--border); }
+.pr-chip.ci-fail { color: var(--fail); border-color: var(--fail); }
+.pr-chip.ci-ready { color: var(--working); border-color: var(--working); }
+.pr-chip.ci-pending { color: var(--waiting); border-color: var(--waiting); }
+@keyframes flash { 0% { box-shadow: 0 0 0 6px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.view-card .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.view-card .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; cursor: text; }
+.view-card .title.auto { color: var(--text); }
+.view-card .title-input { flex: 1; min-width: 0; padding: 1px 5px; font-weight: 500; }
+.view-card .meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); min-width: 0; }
+.view-card .meta .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.view-card .meta button { font-size: 11px; padding: 0 7px; flex: none; }
+.view-card .msg { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; white-space: pre-line; }
+
+/* Dialogs (ADR-0042): one component, anchored at its control or centred over a dimmed board */
+dialog.dlg { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px 14px; background: var(--panel); color: var(--text);
+  width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 16px 48px rgb(0 0 0 / .18); }
+dialog.dlg.centred::backdrop { background: rgb(0 0 0 / .35); }
+dialog.dlg.anchored { position: fixed; inset: auto; margin: 0; box-shadow: 0 10px 32px rgb(0 0 0 / .16); }
+dialog.dlg.anchored::backdrop { background: transparent; }
+.dlg-form { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.dlg-title { margin: 0; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.dlg-title b { font-weight: 600; color: var(--accent); }
+.dlg-sub { margin: -8px 0 0; font-size: 12px; color: var(--muted); }
+.dlg-body { display: flex; flex-direction: column; gap: 8px; }
+.dlg-body :is(input:not([type=checkbox]), textarea, select) { font: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; }
+.dlg-body textarea { resize: vertical; }
+.dlg-body :is(input, textarea, select):focus { outline: none; border-color: var(--accent); }
+.dlg-body .check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+.dlg-form > .error { margin: 0; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
+.dlg-actions .btn { padding: 4px 12px; }
+
+/* Document view (Markdown files) */
+.view-doc { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 1px 3px rgb(0 0 0 / .04); }
+.doc-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: grab; }
+.doc-head button { font-size: 12px; padding: 1px 9px; }
+.doc-title { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-repo, .badge-local { font-size: 11px; padding: 0 7px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); }
+.badge-repo { color: var(--done); border-color: var(--done); }
+.view-doc .card-btn { flex: none; font-size: 16px; line-height: 1; padding: 0 4px; border-color: transparent; background: none; color: var(--muted); }
+.doc-body { flex: 1; overflow: auto; padding: 4px 16px 14px; font-size: 13px; line-height: 1.55; cursor: auto; user-select: text; }
+.doc-body h1, .doc-body h2, .doc-body h3, .doc-body h4 { display: block; text-transform: none; letter-spacing: normal; color: var(--text); font-weight: 600; }
+.doc-body h1 { font-size: 19px; margin: 12px 0 6px; } .doc-body h2 { font-size: 16px; margin: 14px 0 6px; }
+.doc-body h3, .doc-body h4 { font-size: 14px; margin: 12px 0 4px; }
+.doc-body p { margin: 6px 0; } .doc-body ul, .doc-body ol { margin: 6px 0; padding-left: 20px; }
+.doc-body li.task { list-style: none; margin-left: -18px; }
+.doc-body code { background: var(--bg); padding: 0 4px; border-radius: 4px; font-size: 12px; }
+.doc-body pre { background: var(--bg); padding: 8px 10px; border-radius: 8px; overflow: auto; }
+.doc-body pre code { padding: 0; }
+.doc-body .frontmatter { margin: 8px 0 10px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--muted); }
+.doc-body dl.frontmatter > div { display: grid; grid-template-columns: minmax(70px, max-content) 1fr; gap: 10px; padding: 1px 0; }
+.doc-body dl.frontmatter dt { font-weight: 600; } .doc-body dl.frontmatter dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.doc-body blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border); color: var(--muted); }
+.doc-body table { border-collapse: collapse; margin: 6px 0; } .doc-body th, .doc-body td { border: 1px solid var(--border); padding: 3px 8px; }
+.doc-body a { color: var(--accent); }
+.doc-editor { flex: 1; margin: 0; border: 0; resize: none; padding: 10px 14px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--panel); color: var(--text); outline: none; }
+.doc-actions { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.doc-hint { flex: 1; font-size: 12px; color: var(--muted); }
+.doc-conflict { padding: 8px 12px; font-size: 12.5px; background: var(--waiting-bg); border-bottom: 1px solid var(--waiting);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.doc-conflict button { font-size: 12px; padding: 1px 8px; }
+
+/* File picker */
+dialog.dlg.file-dialog { width: min(560px, 100%); }
+.file-list { max-height: 50vh; overflow: auto; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+.file-group { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 8px 2px; }
+.file-item { text-align: left; border: 0; background: none; padding: 5px 8px; border-radius: 6px; font-size: 13px; }
+.file-item:hover:not(:disabled) { background: var(--accent-bg); }
+.file-item .pinned { font-size: 11px; color: var(--muted); }
+
+/* document as a page glyph (elements.md): a small sheet; the bubble peeks into the text */
+.glyphview .glyph.page { border-radius: 2px; width: 11px; height: 14px; left: -5.5px; top: -7px; border: 1.5px solid var(--muted); background: var(--bg); }
+.glyphview .page-bub .b-peek { padding: 0; max-height: 120px; overflow: hidden; font-size: 12.5px; }
+.glyphview[data-depth="3"] .page-bub .b-peek { max-height: 360px; overflow: auto; }
+
+/* list node (elements.md "List", ADR-0036): a small sheet with three lines; red when something is blocked */
+.glyphview .glyph.listg { border-radius: 3px; width: 13px; height: 13px; left: -6.5px; top: -6.5px; border: 1.5px solid var(--muted); background: var(--bg);
+  box-sizing: border-box; }
+.glyphview .glyph.listg i { position: absolute; left: 2px; right: 2px; top: 2.5px; height: 1.5px; background: var(--muted);
+  box-shadow: 0 2.5px 0 var(--muted), 0 5px 0 var(--muted); }
+.glyphview.g-blocked .glyph.listg { border-color: var(--fail); }
+.glyphview.g-stale .lab-t { opacity: .7; }
+/* depth 1: summary only; 2: + the first section; 3: + everything (instead of the first section) */
+.glyphview[data-depth="1"] .list-bub .b-sum, .glyphview[data-depth="1"] .list-bub .b-meta { display: block; }
+.glyphview[data-depth="2"] .list-bub .l-full, .glyphview[data-depth="3"] .list-bub .l-short { display: none; }
+.glyphview[data-depth="3"] .list-bub .l-full { max-height: 420px; overflow: auto; }
+.list-bub .b-sum { font-size: 12.5px; }
+.l-sec { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 6px 0 2px; }
+.l-sec:first-child { margin-top: 0; }
+.l-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 7px; font-size: 12.5px; line-height: 1.45; }
+.l-item .l-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.l-item a { color: inherit; text-decoration: none; } .l-item a:hover { text-decoration: underline; }
+.l-ref { flex: none; font: 11px var(--mono, ui-monospace, monospace); color: var(--muted); background: none; border: 0; padding: 0; cursor: copy; }
+.l-ref:hover { color: var(--text); } .l-ref.done { color: var(--working); }
+.l-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--idle); transform: translateY(-1px); }
+.l-item.st-active .l-dot { background: var(--text); box-shadow: none; }
+.l-item.st-blocked .l-dot { background: var(--fail); box-shadow: none; }
+.l-item.st-done { color: var(--muted); } .l-item.st-done .l-dot { background: var(--ended); box-shadow: none; }
+.l-item.st-done .l-title { text-decoration: line-through; }
+.l-prog, .l-more, .l-rest { font-size: 11.5px; color: var(--muted); }
+.l-child { padding-left: 14px; }
+/* badges on their own line below the title, indented past the dot, so a long one never squeezes the title */
+.l-badges { flex-basis: 100%; display: flex; gap: 4px; flex-wrap: wrap; padding: 2px 0 2px 14px; }
+.l-badge { font-size: 10.5px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.tone-accent { color: var(--accent); } .l-badge.tone-accent { border-color: var(--accent); }
+.tone-good { color: var(--working); } .l-badge.tone-good { border-color: var(--working); }
+.tone-warn { color: var(--waiting); } .l-badge.tone-warn { border-color: var(--waiting); }
+.tone-bad { color: var(--fail); } .l-badge.tone-bad { border-color: var(--fail); }
+.l-bar { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.l-filters { display: flex; gap: 4px; }
+.chip { font-size: 12px; padding: 1px 9px; border-radius: 10px; border: 1px solid var(--border); background: none; color: var(--muted); cursor: pointer; }
+.chip.on { color: var(--text); border-color: var(--text); }
+.l-tree { padding: 10px 20px; display: flex; flex-direction: column; gap: 3px; }
+.l-kids { padding-left: 16px; display: flex; flex-direction: column; gap: 3px; margin-top: 3px; }
+.l-note { margin: 1px 0 3px 14px; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+.l-settings { border-top: 1px solid var(--border); border-bottom: 0; padding-top: 10px; }
+.l-settings summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.l-settings .p-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.list-pin .list-trial, .list-pin .list-guide { font-size: 12px; }
+.list-pin .linkish { all: unset; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.list-pin .linkish:focus-visible { outline: 1px solid var(--accent); border-radius: 3px; }
+
+/* Detail panel (interaction.md): on the right, the board narrows, the camera stays */
+body.has-panel { grid-template-columns: minmax(0, 1fr) var(--panel-w, min(420px, 45vw)); }
+/* width: drag the left edge; full: the board is hidden, the text keeps a readable line length */
+.panel-edge { display: none; position: fixed; top: 0; bottom: 0; width: 8px; z-index: 8; cursor: col-resize; right: calc(var(--panel-w, min(420px, 45vw)) - 4px); }
+body.has-panel:not(.panel-full) .panel-edge { display: block; }
+.panel-edge:hover { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+body.has-panel.panel-full { grid-template-columns: minmax(0, 1fr); }
+body.has-panel.panel-full #viewport { display: none; }
+body.panel-full .panel { border-left: 0; }
+body.panel-full .p-head, body.panel-full .p-body > * { width: 100%; max-width: 88ch; margin-inline: auto; }
+.p-grip { height: 8px; margin: -6px 0 2px; cursor: row-resize; border-radius: 4px; }
+.p-grip:hover { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.panel { display: flex; flex-direction: column; min-height: 0; height: 100vh; box-sizing: border-box; background: var(--panel); border-left: 1px solid var(--border); }
+.p-head { display: flex; align-items: center; gap: 4px; padding: 10px 10px 6px 14px; }
+.p-title, .p-title-ro { flex: 1; min-width: 0; font-family: inherit; font-size: 16px; font-weight: 600; line-height: 1.3; color: var(--text); margin: 0; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: none; overflow: hidden; text-overflow: ellipsis; }
+.p-title:hover { border-color: var(--border); }
+.p-title:focus { outline: none; border-color: var(--accent); }
+.icon { border: 0; background: none; color: var(--muted); font-size: 17px; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; }
+.icon:hover { background: var(--bg); color: var(--text); }
+.icon > svg { display: block; margin: auto; }
+.p-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.p-info { display: flex; flex-direction: column; gap: 10px; padding: 0 20px 12px; border-bottom: 1px solid var(--border); }
+.p-meta, .p-note, .p-prstate, .p-hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+.p-pr { display: flex; flex-direction: column; gap: 6px; }
+.p-prline { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.p-confirm { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.p-conv { flex: 1; overflow: auto; padding: 12px 20px 20px; display: flex; flex-direction: column; gap: 8px; }
+.msg { white-space: pre-wrap; font-size: 13px; line-height: 1.5; padding: 7px 11px; border-radius: 10px; max-width: 92%; }
+.msg.you { align-self: flex-end; background: var(--accent-bg); }
+.msg.ai { align-self: flex-start; background: var(--bg); }
+.msg.note { align-self: center; max-width: 100%; padding: 2px 8px; font-size: 12px; color: var(--muted); text-align: center; white-space: normal; }
+.steps { font-size: 12px; color: var(--muted); }
+.steps summary { cursor: pointer; }
+.steps div { padding-left: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-doc { cursor: text; }
+.p-src { flex: 1; margin: 0 16px; padding: 10px; font: 12.5px/1.5 ui-monospace, Menlo, monospace; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); resize: none; }
+.p-hint { padding: 6px 20px 12px; }
+.p-conflict { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 16px 8px; padding: 8px 10px; font-size: 13px; border-radius: 8px; background: var(--waiting-bg); border: 1px solid var(--waiting); }
+
+/* status line with undo (interaction.md "Undo") */
+.status { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 10px; background: var(--text); color: var(--bg); font-size: 13px; z-index: 6; }
+.status .btn.quiet { color: var(--bg); }
+
+/* shortcut overview */
+.shortcuts { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 30; max-height: calc(100vh - 32px); overflow: auto; padding: 16px 22px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 10px 40px rgb(0 0 0 / .18); }
+.shortcuts h2 { margin: 0 0 4px; font-size: 14px; }
+.shortcuts h3 { margin: 12px 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.shortcuts dl { display: grid; grid-template-columns: 170px 1fr; gap: 6px 16px; margin: 0; font-size: 13px; }
+.shortcuts dt, .shortcuts dd { margin: 0; }
+/* keys (copy.md "Keys"): one look everywhere — overview, menus, hints; fits a 20px hint pill */
+kbd { display: inline-block; min-width: 1.4em; box-sizing: border-box; text-align: center; font: 500 11px/15px -apple-system, system-ui, sans-serif;
+  padding: 0 4px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--panel); color: var(--text); vertical-align: 1px; }
+.shortcuts dt.pointer { font-size: 12.5px; color: var(--muted); }
+
+/* owned sessions (elements.md: thin ring around the dot) and their permission requests */
+.glyphview.owned .glyph { outline: 1px solid var(--muted); outline-offset: 3px; }
+.glyphview .bub > .b-perm { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; font-size: 12.5px; }
+.b-permq { overflow-wrap: anywhere; }
+.p-run select { font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
+.p-run { display: flex; gap: 4px; flex-wrap: nowrap; }
+.p-run select { flex: 0 1 auto; min-width: 0; padding: 2px 4px; font-size: 12px; }
+.p-observed { display: flex; align-items: center; gap: 8px; }
+/* in the reply field's place (observed session): text left, "Take over …" right */
+.p-foot .p-observed { justify-content: space-between; min-height: 34px; }
+.p-confirm.warn { padding: 8px 10px; border-radius: 8px; background: var(--waiting-bg); border: 1px solid var(--waiting); }
+.p-note.err { color: var(--fail); }
+.p-foot { border-top: 1px solid var(--border); padding: 10px 16px 14px; }
+.p-foot:empty { display: none; }
+.p-ask > .b-perm { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12.5px; }
+.p-ask .b-permq { flex: 1; min-width: 0; }
+.b-perm.b-ask, .p-ask > .b-perm.b-ask { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.b-q { display: flex; flex-direction: column; gap: 4px; }
+.b-opt { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; cursor: pointer; }
+.b-other { font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--text); }
+.b-plantext { max-height: 240px; overflow: auto; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; }
+.p-opts { margin-bottom: 6px; }
+.glyphview .b-warn, .p-note.warn { color: var(--waiting); }
+.glyphview .b-fixing, .p-pr .b-fixing { font-size: 12.5px; color: var(--muted); }
+
+/* agents (elements.md): the session glyph plus a small moon top right */
+.glyphview .glyph .moon { position: absolute; right: -6px; top: -6px; width: 7px; height: 7px; border-radius: 50%; background: var(--bg); box-shadow: inset 2px -1px 0 0 var(--muted); }
+.glyphview.agent.g-working .glyph .moon, .glyphview.agent.g-waiting .glyph .moon { box-shadow: inset 2px -1px 0 0 var(--text); }
+.p-agent .p-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.p-agent .p-field textarea, .p-agent .p-field input { font: inherit; font-size: 13px; color: var(--text); padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); resize: vertical; }
+.p-reading { margin: 0; font-size: 12.5px; color: var(--muted); }
+.p-reading.warn { color: var(--waiting); }
+.p-run-item { display: flex; justify-content: space-between; gap: 10px; text-align: left; border: 0; background: none; padding: 6px 4px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; }
+.p-run-item:hover { background: var(--bg); }
+.p-run-item em { color: var(--muted); font-style: normal; font-size: 12px; white-space: nowrap; }
+
+/* Markdown from Claude in bubbles and the conversation */
+.md { white-space: normal; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre { margin: 4px 0; }
+.md ul, .md ol { padding-left: 18px; }
+.md h1, .md h2, .md h3, .md h4 { font-size: 13.5px; margin: 6px 0 2px; }
+.md code { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); padding: 0 3px; border-radius: 3px; }
+.md pre { overflow-x: auto; background: var(--bg); padding: 6px 8px; border-radius: 6px; }
+.md pre code { padding: 0; }
+.md a { color: var(--accent); }
+.glyphview .b-said.md pre { max-height: 120px; }
+.glyphview .b-said.md, .msg.md { white-space: normal; }
+.b-permq code { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); padding: 0 4px; border-radius: 3px; overflow-wrap: anywhere; }
+.glyphview[data-depth="1"] .b-permhint { display: none; }
+
+/* attachments (ADR-0021) */
+.attach { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.attach:has(.att-chip, .att-error:not([hidden])) { padding: 0 32px 6px 8px; }
+.att-chips { display: contents; }
+.att-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 13px; }
+.att-pick { position: absolute; right: 6px; bottom: 5px; display: flex; padding: 3px; border-radius: 5px; color: var(--muted); cursor: pointer; }
+.att-pick:hover { color: var(--text); }
+.att-error { color: var(--fail); }
+.composer.drop, textarea.drop { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.msg.you.pending { opacity: .55; }
+.msg.you.pending::after { content: " · sending"; font-size: 11px; color: var(--muted); }
+
+/* Text selection:the canvas is for moving, so its text cannot be selected by accident while panning or
+   dragging; the detail panel, documents and fields stay selectable and copyable. */
+#viewport { user-select: none; -webkit-user-select: none; }
+.panel, .panel *, #viewport input, #viewport textarea, .doc-body { user-select: text; -webkit-user-select: text; }
+.measurer { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; contain: layout style; }
+.p-ack { display: contents; }
+
+/* done: the session's PR is merged (ADR-0023) — a quiet check, never orange */
+.pr-chip.merged { color: var(--working); border-color: color-mix(in srgb, var(--working) 45%, transparent); }
+.glyphview.g-finished .glyph { border: 1.5px solid var(--working); background: var(--bg); }
+.glyphview.g-finished .glyph::before { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 8px; line-height: 1; color: var(--working); }
+.glyphview.g-finished .lab { color: var(--muted); font-weight: 400; }
+
+/* message field (reply and "Neue Session"): text, attachment chips and the paper clip in one box */
+.composer { position: relative; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.composer:focus-within { border-color: var(--accent); }
+.composer textarea, .dlg-body .composer textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px 32px 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--text); resize: none; outline: none; }
+
+/* copy buttons (copy.js): bubble and code block, shown on hover; the icon is CSS so it never becomes copied text */
+.msg, .code { position: relative; }
+.icon.copy { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; padding: 0; display: grid; place-items: center; font-size: 14px; line-height: 1; opacity: 0; transition: opacity .1s; }
+.icon.copy::before { content: "⧉"; }
+.icon.copy.done::before { content: "✓"; } .icon.copy.failed::before { content: "!"; }
+.msg:hover > .icon.copy, .code:hover > .icon.copy, .icon.copy:focus-visible, .icon.copy.done, .icon.copy.failed { opacity: 1; }
+.icon.copy { background: var(--panel); }
+.code > .icon.copy { top: 4px; right: 4px; }
+.msg > .icon.copy { top: 3px; background: none; } /* beside the bubble, never over its text */
+.msg.ai > .icon.copy { right: auto; left: 100%; margin-left: 2px; }
+.msg.you > .icon.copy { right: 100%; margin-right: 2px; }
+
+/* local file references (ADR-0030): open the file on click */
+a.file-link { color: var(--accent); text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+
+/* selection of several elements and the bar to arrange it (ADR-0034) */
+.lasso { position: absolute; z-index: 5; pointer-events: none; border: 1px dashed var(--waiting); background: color-mix(in srgb, var(--waiting) 8%, transparent); border-radius: 2px; }
+.glyphview.selected .glyph { outline: 1.5px dashed var(--text); outline-offset: 4px; }
+.arrange { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 2px;
+  padding: 4px 6px 4px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 4px 16px rgb(0 0 0 / .08); font-size: 13px; }
+.arrange[hidden] { display: none; }
+.arrange-count { color: var(--muted); margin-right: 6px; white-space: nowrap; }
+.arrange .btn { min-width: 28px; padding: 3px 6px; font-size: 15px; line-height: 1; }
+.arrange-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+/* folder field with the native picker next to it (ADR-0035) */
+.dlg-body .path-row { display: flex; gap: 6px; }
+.dlg-body .path-row input { flex: 1; min-width: 0; }
+.dlg-body .path-row button { white-space: nowrap; border: 1px solid var(--border); }
+
+/* File preview (ADR-0040) */
+dialog.dlg.preview { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; overflow: hidden; }
+dialog.dlg.preview :is(.dlg-form, .dlg-body) { gap: 0; max-height: calc(100vh - 50px); min-height: 0; }
+.pv-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--border); }
+.pv-name { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-at { color: var(--muted); font-weight: 400; }
+.pv-x { font-size: 16px; line-height: 1; }
+.pv-body { overflow: auto; min-height: 120px; display: flex; flex-direction: column; }
+.pv-note { margin: 24px; color: var(--muted); font-size: 13px; }
+.pv-img { max-width: 100%; max-height: calc(100vh - 110px); margin: auto; object-fit: contain; cursor: zoom-in; display: block; }
+.pv-img.pv-full { max-width: none; max-height: none; cursor: zoom-out; }
+.pv-pdf { width: 100%; height: calc(100vh - 110px); border: 0; }
+.pv-md { padding: 18px 24px; }
+.pv-code { margin: 0; padding: 10px 0; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; counter-reset: none; }
+.pv-row { display: block; padding: 0 16px 0 0; white-space: pre; }
+.pv-row i { display: inline-block; width: 4.5em; padding-right: 1em; text-align: right; color: var(--muted); font-style: normal; user-select: none; }
+.pv-line { background: color-mix(in srgb, var(--accent, #f5a623) 18%, transparent); }
+
+/* Island panel (ADR-0042) */
+.p-island { display: flex; flex-direction: column; gap: 18px; padding: 14px 18px 20px; overflow: auto; box-sizing: border-box; }
+.p-island section { display: flex; flex-direction: column; gap: 6px; }
+.p-island section:empty { display: none; }
+.p-island h4 { margin: 0 0 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.pi-path { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-island .pi-row, .p-island .pi-row:hover { text-align: left; color: var(--text); padding: 4px 8px; margin: 0 -8px; font-size: 13px; border-color: transparent; }
+.p-island .pi-row:hover:not(:disabled) { background: var(--bg); border-color: transparent; }
+.p-island .pi-row:disabled { color: var(--muted); }
+.p-island .pi-danger:not(:disabled) { color: var(--fail); }
+.pi-remove { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.dlg-body .p-run { gap: 6px; }
+.dlg-body .p-run select { flex: 1; width: auto; }
+.menu kbd { float: right; margin-left: 16px; }
+.p-island, .p-island section { min-width: 0; }
+.pi-clean, .pi-archive { display: flex; flex-direction: column; align-items: stretch; }
+.p-island .p-run select { flex: 1 1 0; min-width: 0; font-size: 12.5px; padding: 3px 4px; }
+.p-island .pi-more { display: flex; justify-content: space-between; }
+.p-island .pi-more span { color: var(--muted); }
+.pi-back { align-self: flex-start; margin-left: -8px; color: var(--muted); }
+.pa-head { margin: 4px 0 0; }
+.pa-search { font: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); }
+.pa-search:focus { outline: none; border-color: var(--accent); }
+.pa-list { display: flex; flex-direction: column; }
+.p-island .pa-item { display: flex; gap: 12px; align-items: baseline; }
+.pa-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-when { flex: none; font-size: 12px; color: var(--muted); }

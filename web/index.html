@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orbit</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <meta name="theme-color" content="#534ab7" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main id="viewport" tabindex="0" aria-label="Board">
+    <div id="world"></div>
+    <div class="atlas" aria-label="Island overview"></div>
+    <div class="edges"></div>
+    <p id="empty" class="empty-canvas" hidden></p>
+    <div id="first-run" class="first-run no-drag" hidden></div>
+    <p id="hint" class="hint" aria-live="polite" hidden></p>
+    <p id="import-line" class="import-line no-drag" role="status" hidden></p>
+    <div id="toast" class="toast" role="alert" hidden></div>
+    <div id="hook-notice" class="hook-notice no-drag" role="status" data-inset="top" hidden></div>
+    <div id="status" class="status" role="status" hidden></div>
+    <div class="minimap" aria-label="Map"><canvas></canvas></div>
+    <div class="chrome">
+      <button class="zd l0" data-level="0" aria-label="Far"></button>
+      <button class="zd l1" data-level="1" aria-label="Medium"></button>
+      <button class="zd l2" data-level="2" aria-label="Near"></button>
+    </div>
+  </main>
+  <aside id="panel" class="panel" aria-label="Details" hidden></aside>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

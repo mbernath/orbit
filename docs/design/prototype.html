@@ -1,0 +1,1547 @@
+<title>Orbit Moodboard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Layout: one canvas, projects as islands (hull around their content). Zoom sets base depth, attention lifts one item deeper. Labels beside dots, bubbles above/below, placed with generous gaps around dots, links and each other. Minimap + edge hints replace the "needs you" sidebar. */
+:root{
+  --ground:#eceae4;
+  --surface:#f6f5f1;
+  --island:#efede7;
+  --island-active:#e9e6de;
+  --ink:#24262b;
+  --ink-soft:#6c6f76;
+  --ink-faint:#b5b4ae;
+  --signal:#e0791a;
+  --signal-glow:rgba(224,121,26,.2);
+  --sans:"Instrument Sans",ui-sans-serif,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;--ground:#17181b;--surface:#1f2024;--island:#232428;--island-active:#292a2f;--ink:#e6e4de;--ink-soft:#8d8f95;--ink-faint:#45474c;--signal:#f2994a;--signal-glow:rgba(242,153,74,.22);}}
+:root[data-theme="dark"]{color-scheme:dark;--ground:#17181b;--surface:#1f2024;--island:#232428;--island-active:#292a2f;--ink:#e6e4de;--ink-soft:#8d8f95;--ink-faint:#45474c;--signal:#f2994a;--signal-glow:rgba(242,153,74,.22);}
+
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:48px 80px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+header{display:flex;flex-direction:column;gap:10px;max-width:64ch}
+h1{font-weight:500;font-size:15px;margin:0;color:var(--ink-soft)}
+.thesis{font-size:clamp(22px,3vw,30px);line-height:1.28;font-weight:400;margin:0;text-wrap:balance}
+
+.app{position:relative;height:min(86vh,820px);min-height:520px;background:var(--surface);border-radius:4px;overflow:hidden;display:flex}
+.lens{position:relative;flex:1;overflow:hidden;touch-action:none;cursor:grab;user-select:none;outline:none}
+.lens:focus-visible{box-shadow:inset 0 0 0 2px var(--signal)}
+.lens.panning{cursor:grabbing}
+.world{position:absolute;left:0;top:0;width:1400px;height:800px;transform-origin:0 0}
+
+/* islands */
+svg.isl{position:absolute;inset:0;width:1400px;height:800px;overflow:visible;pointer-events:none}
+.isl rect{fill:var(--island);stroke:none}
+.isname{position:absolute;left:0;top:0;cursor:move}
+.isname span{display:block;transform:scale(var(--inv));transform-origin:0 0;font-size:12px;letter-spacing:.08em;color:var(--ink-soft);white-space:nowrap;padding:2px 4px}
+.isname:hover span{color:var(--ink)}
+/* the active island: under the pointer, or holding the selected / open element */
+.isl rect{transition:fill .25s ease}
+.isl rect.active{fill:var(--island-active)}
+.isname.active span{color:var(--ink)}
+.isname span{display:flex;align-items:center;gap:8px}
+.isname .nm{font-weight:inherit}
+.isname .nm[contenteditable="true"]{outline:none;box-shadow:0 0 0 4px var(--surface),0 0 0 5px var(--ink-faint);border-radius:3px;cursor:text}
+.isname .add{font:inherit;font-size:15px;line-height:1;width:20px;height:20px;border-radius:50%;border:1px solid var(--ink-faint);background:transparent;color:var(--ink-soft);cursor:pointer;padding:0;
+  opacity:0;transition:opacity .2s}
+.isname.active .add,.isname .add:focus-visible{opacity:1}
+.isname .add:hover{color:var(--ink);border-color:var(--ink-soft)}
+a.pr{text-decoration:none;pointer-events:auto;cursor:pointer}
+a.pr:hover{border-color:var(--ink-soft);color:var(--ink)}
+a.pr.att:hover{color:var(--signal);border-color:var(--signal);background:var(--signal-glow)}
+/* "take off the board" is a small archive icon: in the panel header next to ×, in the near bubble at its top right */
+.icon-btn,.arch{width:26px;height:26px;flex:none;display:grid;place-items:center;border:0;border-radius:5px;background:transparent;color:var(--ink-soft);cursor:pointer;padding:0}
+.icon-btn svg,.arch svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linejoin:round;stroke-linecap:round}
+.icon-btn:hover,.arch:hover{color:var(--ink);background:var(--surface)}
+.icon-btn[hidden],.live[hidden],.compose[hidden]{display:none}
+.deep{position:relative}
+/* agents: a dot with a small moon. The moon is the agent's lasting identity; the dot shows the current run like a session */
+.moon{position:absolute;left:5px;top:-13px;width:6px;height:6px;border-radius:50%;background:var(--ink-soft);pointer-events:none}
+.session.agent.wait .moon{background:var(--signal)}
+.role{color:var(--ink-soft);font-size:12.5px}
+.item[data-t="1"] .role{display:none}
+.runs{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ink-soft)}
+.runs span{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-right:6px}
+.deep .arch{position:absolute;right:-6px;top:4px;width:22px;height:22px}
+.status button{font:inherit;font-size:12.5px;color:var(--ink);background:none;border:0;padding:0 0 0 8px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.item.gone{opacity:0;transition:opacity .35s ease;pointer-events:none}
+.fgrip{position:absolute;left:0;top:0;width:0;height:0;cursor:nwse-resize}
+.fgrip::before{content:"";position:absolute;left:calc(var(--inv)*-22px);top:calc(var(--inv)*-22px);width:calc(var(--inv)*14px);height:calc(var(--inv)*14px);
+  border-right:calc(var(--inv)*1.5px) solid var(--ink-faint);border-bottom:calc(var(--inv)*1.5px) solid var(--ink-faint);border-bottom-right-radius:calc(var(--inv)*6px);opacity:0;transition:opacity .2s}
+.fgrip::after{content:"";position:absolute;left:calc(var(--inv)*-30px);top:calc(var(--inv)*-30px);width:calc(var(--inv)*30px);height:calc(var(--inv)*30px)}
+.fgrip:hover::before,.lens:hover .fgrip::before{opacity:1}
+.lab>span:first-child{overflow:hidden;text-overflow:ellipsis}
+
+/* links */
+svg.links{position:absolute;inset:0;width:1400px;height:800px;overflow:visible;pointer-events:none}
+.lk .hit{stroke:transparent;stroke-width:calc(var(--inv)*12px);pointer-events:stroke;cursor:pointer}
+.lk .ln{stroke:var(--ink-faint);stroke-width:calc(var(--inv)*1.2px);fill:none;transition:stroke .3s}
+.lk.waits .ln{stroke-dasharray:calc(var(--inv)*5px) calc(var(--inv)*4px)}
+.lk.topic .ln{stroke-dasharray:calc(var(--inv)*1px) calc(var(--inv)*4px);stroke-linecap:round}
+.lk .arr{fill:var(--ink-faint)}
+.lk.hot .ln,.lk:hover .ln{stroke:var(--ink-soft)}
+.lk.hot .arr{fill:var(--ink-soft)}
+.pulse{fill:var(--ink)}
+svg.links line.tmp{stroke:var(--ink);stroke-width:calc(var(--inv)*1.2px);stroke-dasharray:calc(var(--inv)*2px) calc(var(--inv)*2px)}
+svg.links .hintline{stroke:var(--ink-soft);stroke-width:var(--inv);stroke-dasharray:calc(var(--inv)*3px) calc(var(--inv)*3px)}
+
+/* items */
+.item{position:absolute;width:0;height:0;outline:none}
+.item.prio{z-index:3}
+.ui{position:absolute;left:0;top:0;transform:scale(var(--inv));transform-origin:0 0}
+.glyph{position:absolute;cursor:pointer;transition:transform .2s,box-shadow .2s}
+.glyph:hover{transform:scale(1.2)}
+.item.kfocus .glyph{outline:1.5px solid var(--signal);outline-offset:5px}
+.session .glyph{left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:var(--ink);box-sizing:border-box}
+.session.rest .glyph{background:var(--surface);border:1px solid var(--ink-soft)}
+.session.wait .glyph{background:var(--signal);box-shadow:0 0 0 5px var(--signal-glow)}
+.session.done .glyph{background:var(--surface);border:2px solid var(--signal)}
+/* snoozed: still waiting, but no longer calling for you: the orange stays as a thin ring, no glow */
+.session.snoozed .glyph{background:var(--surface);border:1.5px solid var(--signal);box-shadow:none}
+.session.snoozed .bub{box-shadow:0 0 0 1px color-mix(in srgb,var(--ink-faint) 60%,transparent)!important}
+.btn.quiet{border-color:transparent;color:var(--ink-soft)}
+.btn.quiet:hover{color:var(--ink);border-color:var(--ink-faint)}
+/* ownership: owned = ring you hold, observed = bare dot, remote = diamond */
+.session.own .glyph::before{content:"";position:absolute;inset:-5px;border-radius:50%;border:1px solid var(--ink-soft)}
+.session.remote .glyph{border-radius:2px;transform:rotate(45deg) scale(.9)}
+.session.remote .glyph:hover{transform:rotate(45deg) scale(1.1)}
+.item.fresh .glyph::after{content:"";position:absolute;inset:-8px;border-radius:50%;border:1px solid var(--ink-soft);animation:ripple 1.6s ease-out 2}
+@keyframes ripple{from{opacity:.8;transform:scale(.6)}to{opacity:0;transform:scale(1.8)}}
+.doc .glyph{left:-6px;top:-8px;width:12px;height:16px;border:1px solid var(--ink-soft);box-sizing:border-box;border-radius:1px;background:var(--surface);
+  background-image:linear-gradient(var(--ink-faint),var(--ink-faint)),linear-gradient(var(--ink-faint),var(--ink-faint)),linear-gradient(var(--ink-faint),var(--ink-faint));
+  background-size:6px 1px,6px 1px,4px 1px;background-position:2px 4px,2px 7px,2px 10px;background-repeat:no-repeat}
+.memory .glyph{left:-7px;top:-7px;width:14px;height:14px;border:1px solid var(--ink-soft);box-sizing:border-box;border-radius:3px;background:var(--surface);
+  box-shadow:2px 2px 0 -1px var(--surface),2px 2px 0 0 var(--ink-soft),4px 4px 0 -1px var(--surface),4px 4px 0 0 var(--ink-faint)}
+.item.open .glyph{outline:1.5px solid var(--ink);outline-offset:4px}
+.item.dim .ui{opacity:.25}
+.knob{position:absolute;left:-3.5px;top:-21px;width:7px;height:7px;border-radius:50%;border:1px solid var(--ink-soft);background:var(--surface);box-sizing:border-box;cursor:crosshair;opacity:0;transition:opacity .15s}
+.session:hover .knob{opacity:1}
+
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.lab{position:absolute;top:-10px;display:flex;align-items:center;gap:7px;font-size:13px;line-height:1.5;font-weight:500;white-space:nowrap;color:var(--ink);cursor:pointer;
+  text-shadow:0 0 3px var(--island),0 0 6px var(--island),0 0 9px var(--island);
+  opacity:0;visibility:hidden;transition:opacity .45s ease,visibility 0s linear .45s}
+.lab[data-p="e"]{left:16px}.lab[data-p="w"]{right:16px;flex-direction:row-reverse}
+.doc .lab,.memory .lab,.session.rest .lab{color:var(--ink-soft);font-weight:400}
+.item.sl .lab{opacity:1;visibility:visible;transition:opacity .25s ease}
+.pr{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--ink-soft);border:1px solid var(--ink-faint);border-radius:4px;padding:0 5px;line-height:17px}
+.pr.att{color:var(--signal);border-color:var(--signal)}
+
+.bub{position:absolute;box-sizing:border-box;display:flex;flex-direction:column;gap:7px;width:264px;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;
+  background:var(--ground);box-shadow:0 0 0 1px color-mix(in srgb,var(--ink-faint) 60%,transparent);cursor:text;
+  opacity:0;visibility:hidden;transform:translateY(3px);transition:opacity .5s ease,transform .5s ease,visibility 0s linear .5s}
+.item.sb .bub{opacity:1;visibility:visible;transform:none;transition:opacity .25s ease,transform .25s ease}
+.item.prrow-att[data-t="1"] .prrow{display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:var(--ink-soft)}
+/* global listening indicator */
+.ear{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;padding:6px 14px 6px 12px;border-radius:20px;
+  background:var(--surface);box-shadow:0 0 0 1px var(--signal),0 6px 20px rgba(0,0,0,.06);font-size:13px;color:var(--ink);white-space:nowrap}
+.ear[hidden]{display:none}
+.ear .to{color:var(--ink-soft)}
+.pacts{display:flex;flex-direction:column;gap:8px;margin-top:8px;font-size:13px;color:var(--ink-soft)}
+.pacts:empty{display:none}
+.pacts .row2{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.bub[data-p="ne"]{left:-4px;bottom:22px;border-bottom-left-radius:3px}
+.bub[data-p="nw"]{right:-4px;bottom:22px;border-bottom-right-radius:3px}
+.bub[data-p="se"]{left:-4px;top:24px;border-top-left-radius:3px}
+.bub[data-p="sw"]{right:-4px;top:24px;border-top-right-radius:3px}
+.session.wait .bub,.session.done .bub{background:var(--surface);box-shadow:0 0 0 1px var(--signal)}
+.doc .bub,.memory .bub{border-radius:4px;cursor:default;width:284px}
+/* depth 2, 3 and reply share one width, so a bubble never grows sideways when you start to reply */
+.item[data-t="2"] .bub{width:354px}
+.item[data-t="3"] .bub,.item[data-t="r"] .bub{width:354px}
+.said,.ctx,.now,.asks,.deep,.thread,.reply,.peek,.own-note,.prrow{display:none}
+.item[data-t="1"] .said{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item[data-t="2"] .said,.item[data-t="3"] .said{display:block}
+.item[data-t="2"] .ctx,.item[data-t="3"] .ctx{display:block;color:var(--ink-soft)}
+.ctx b{font-weight:500;margin-right:5px}
+.item.work[data-t="2"] .now,.item.work[data-t="3"] .now,.item.work[data-t="r"] .now{display:flex}
+.now{align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)}
+.now i{width:6px;height:6px;border-radius:50%;background:var(--ink);animation:breathe 1.6s ease-in-out infinite;flex:none}
+@keyframes breathe{0%,100%{opacity:.3}50%{opacity:1}}
+.item:not([data-t="0"]) .asks{display:flex;gap:6px;flex-wrap:wrap}
+.btn{font:inherit;font-size:12.5px;border:1px solid var(--ink-faint);background:transparent;color:var(--ink);border-radius:5px;padding:3px 10px;cursor:pointer}
+.btn.primary{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.item[data-t="2"] .prrow,.item[data-t="3"] .prrow,.item[data-t="r"] .prrow{display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:var(--ink-soft)}
+.prrow .pr{font-size:11.5px}
+/* the action area sits at the bottom, set off from the messages by one hairline */
+.prrow,.asks{border-top:1px solid color-mix(in srgb,var(--ink-faint) 55%,transparent);padding-top:9px}
+.prrow+.asks{border-top:0;padding-top:0}
+.prline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.prnote{font-size:12.5px;color:var(--ink-soft)}
+.btnrow{display:flex;gap:6px;flex-wrap:wrap}
+.btn{line-height:1.4}
+.item:not([data-t="2"]):not([data-t="3"]):not([data-t="r"]) .agentrun{display:none}
+.item[data-t="3"] .deep{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--ink-faint);padding-top:8px}
+.steps{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);display:flex;flex-direction:column;gap:2px}
+.files{display:flex;flex-wrap:wrap;gap:4px}
+.files span,.term{font-family:var(--mono);font-size:11px;background:var(--surface);border-radius:3px;padding:1px 5px}
+.session.wait .files span,.session.wait .term{background:var(--ground)}
+.rels{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ink-soft)}
+.rels svg{width:18px;height:6px;vertical-align:middle;margin-right:5px}
+.rels line{stroke:var(--ink-soft);stroke-width:1.2}
+.item[data-t="r"] .thread{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto;cursor:auto;user-select:text;flex:0 1 auto;min-height:40px}
+/* a new session has no history yet: no empty space above its prompt field */
+.item[data-t="r"] .thread:empty,.item[data-t="r"] .said:empty{display:none}
+.item[data-t="r"] .bub{overflow:hidden}
+.item[data-t="r"] .bub>*:not(.thread){flex-shrink:0}
+.tm{font-size:13px;line-height:1.5}
+.tm.you{align-self:flex-end;max-width:85%;background:var(--surface);padding:4px 10px;border-radius:10px 10px 3px 10px}
+.session.wait .tm.you{background:var(--ground)}
+.tm.agent{padding-left:8px;border-left:2px solid var(--ink-faint)}
+.tm small{display:block;font-size:11px;color:var(--ink-soft)}
+.tm.steps1{font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+.item[data-t="r"] .reply{display:flex;flex-direction:column;gap:5px;cursor:auto}
+.item[data-t="r"] .own-note{display:flex;flex-direction:column;gap:7px;font-size:12.5px;color:var(--ink-soft);border-top:1px solid var(--ink-faint);padding-top:8px}
+.field{display:flex;align-items:flex-end;gap:6px}
+/* settings of a new session: one quiet line, words that are buttons */
+.setline{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--ink-faint)}
+.lnk{font:inherit;font-size:12px;color:var(--ink-soft);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-decoration-color:var(--ink-faint);text-underline-offset:3px}
+.lnk:hover{color:var(--ink)}
+.wtline{font-size:12px;color:var(--ink-soft)}
+.wtline .warn{color:var(--signal)}
+.meta .chip{font:inherit;color:var(--ink-soft);background:none;border:0;border-bottom:1px dotted var(--ink-faint);padding:0;cursor:pointer}
+.meta .chip:hover{color:var(--ink)}
+.trig-in{font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface);border:1px solid var(--ink-faint);border-radius:7px;padding:6px 9px;outline:none;margin-top:6px;width:100%;box-sizing:border-box}
+.trig-in:focus{border-color:var(--ink-soft)}
+.agentdef{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;color:var(--ink)}
+.agentdef .lbl{color:var(--ink-soft);font-size:12px;padding-top:1px}
+.agentdef .ed{outline:none;border-radius:3px;cursor:text}
+.agentdef .ed:hover{box-shadow:0 0 0 4px var(--surface)}
+.agentdef .ed:focus{box-shadow:0 0 0 4px var(--surface),0 0 0 5px var(--ink-faint)}
+.newisl{padding:8px;gap:6px;min-width:260px}
+.newisl input{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--ink-faint);border-radius:6px;padding:6px 9px;outline:none}
+.newisl input:focus{border-color:var(--ink-soft)}
+.reply textarea{flex:1;font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--ink-faint);border-radius:7px;padding:6px 9px;resize:none;height:46px;outline:none}
+.session.wait .reply textarea{background:var(--ground);border-color:var(--signal)}
+.reply textarea:focus{border-color:var(--ink-soft)}
+.mic{width:30px;height:30px;flex:none;border-radius:50%;border:1px solid var(--ink-faint);background:transparent;cursor:pointer;display:grid;place-items:center;padding:0}
+.mic svg{width:13px;height:13px;fill:none;stroke:var(--ink-soft);stroke-width:1.6;stroke-linecap:round}
+.mic.on{border-color:var(--signal);background:var(--signal)}
+.mic.on svg{stroke:var(--surface)}
+.reply small{font-size:11px;color:var(--ink-faint)}
+.listen{display:none;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-soft)}
+.reply.listening .listen{display:flex}
+.wave{display:flex;gap:2px;align-items:center;height:12px}
+.wave i{width:2px;background:var(--signal);border-radius:1px;animation:wave .9s ease-in-out infinite}
+.wave i:nth-child(2){animation-delay:-.2s}.wave i:nth-child(3){animation-delay:-.4s}.wave i:nth-child(4){animation-delay:-.6s}.wave i:nth-child(5){animation-delay:-.1s}
+@keyframes wave{0%,100%{height:3px}50%{height:12px}}
+.terms{display:none;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px;color:var(--ink-faint)}
+.reply.has-terms .terms{display:flex}
+.news{display:block;font-size:13px;line-height:1.5}
+.item[data-t="1"].doc .bub,.item[data-t="1"].memory .bub{width:234px}
+.news small{display:block;font-size:11.5px;color:var(--ink-soft)}
+.item[data-t="2"] .news,.item[data-t="3"] .news{padding-bottom:7px;border-bottom:1px solid var(--ink-faint)}
+.item[data-t="2"] .peek,.item[data-t="3"] .peek{display:block;font-size:12.5px;line-height:1.5;color:var(--ink-soft);max-height:84px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 55%,transparent)}
+.item[data-t="3"] .peek{max-height:260px;overflow:auto;-webkit-mask-image:none;color:var(--ink);scrollbar-width:thin;cursor:auto;user-select:text}
+.peek h3{font-size:12.5px;font-weight:600;color:var(--ink);margin:.5em 0 0}
+.peek p,.peek ul{margin:0}.peek ul{padding-left:1.2em}
+.peek .used{display:none;font-size:11.5px;margin-top:8px;padding-top:6px;border-top:1px solid var(--ink-faint);color:var(--ink-soft)}
+.item[data-t="3"] .peek .used{display:block}
+
+/* minimap and edge hints */
+.mini{position:absolute;left:14px;bottom:14px;z-index:4;width:190px;height:112px;background:var(--ground);border-radius:6px;box-shadow:0 0 0 1px var(--ink-faint);cursor:pointer}
+.mini canvas{width:100%;height:100%;display:block}
+.mini{transition:width .3s ease,height .3s ease,opacity .3s ease;cursor:grab}
+.mini:active{cursor:grabbing}
+/* tucked: gives its corner to the bubble you are working with, shrinks to a small map you can still click */
+.mini.tuck{width:44px;height:28px;opacity:.75;cursor:pointer}
+.edges{position:absolute;inset:0;pointer-events:none;z-index:5}
+.edge{position:absolute;display:flex;align-items:center;gap:6px;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
+  font-size:12px;color:var(--ink);background:var(--surface);border:1px solid var(--signal);border-radius:12px;padding:2px 10px 2px 6px;white-space:nowrap;max-width:240px}
+.edge i{width:0;height:0;border-left:5px solid var(--signal);border-top:4px solid transparent;border-bottom:4px solid transparent;flex:none}
+.edge span{overflow:hidden;text-overflow:ellipsis}
+.edge b{font-weight:500;color:var(--ink-soft);font-size:11px}
+
+/* overlays */
+.ov{position:absolute;z-index:6;background:var(--ground);border-radius:8px;box-shadow:0 0 0 1px var(--ink-faint),0 6px 24px rgba(0,0,0,.08)}
+.menu{display:flex;flex-direction:column;padding:4px;min-width:210px}
+.menu .q{font-size:12px;color:var(--ink-soft);padding:6px 9px 4px}
+.menu button{font:inherit;font-size:12.5px;color:var(--ink);background:transparent;border:0;border-radius:5px;padding:4px 9px;cursor:pointer;text-align:left;display:flex;gap:10px;align-items:center;width:100%;box-sizing:border-box}
+.menu kbd{margin-left:auto;padding-left:16px;font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+.menu button:hover,.menu button:focus{background:var(--surface);outline:none}
+.menu svg{width:26px;height:8px;flex:none}
+.menu svg line{stroke:var(--ink-soft);stroke-width:1.2}
+.menu button.on{font-weight:600}
+.menu .sep{height:1px;background:var(--ink-faint);margin:4px 6px}
+.status{position:absolute;left:220px;bottom:16px;z-index:4;color:var(--ink-soft);font-size:12.5px}
+.status:empty{display:none}
+.scale{position:absolute;right:16px;bottom:14px;display:flex;align-items:center;gap:10px;z-index:4}
+.scale button{border:1px solid var(--ink-soft);background:transparent;border-radius:50%;padding:0;cursor:pointer}
+.scale .l0{width:6px;height:6px}.scale .l1{width:9px;height:9px}.scale .l2{width:13px;height:13px}
+.scale button.on{background:var(--ink-soft)}
+.scale .help{width:auto;height:auto;border:0;border-radius:4px;font:inherit;font-size:12px;color:var(--ink-faint);padding:0 4px}
+.scale .help:hover{color:var(--ink)}
+.keys{position:absolute;right:16px;bottom:40px;z-index:7;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;max-width:350px}
+.keys kbd{font-family:var(--mono);font-size:11.5px;color:var(--ink);white-space:nowrap}
+.keys span{color:var(--ink-soft)}
+.keys h4{grid-column:1/-1;margin:6px 0 0;font-size:11.5px;font-weight:500;color:var(--ink-faint);letter-spacing:.04em}
+.keys h4:first-child{margin-top:0}
+.keys[hidden]{display:none}
+
+/* panel */
+.panel{width:0;flex:none;overflow:hidden;transition:width .3s cubic-bezier(.2,.7,.2,1);border-left:1px solid transparent;background:var(--ground)}
+.app.side .panel{width:min(420px,100%);border-left-color:var(--ink-faint)}
+.pin{width:min(420px,100vw - 32px);height:100%;display:flex;flex-direction:column}
+.ph{padding:18px 20px 14px;display:flex;flex-direction:column;gap:4px}
+.ph .row{display:flex;align-items:start;gap:12px}
+.ph h2{font-size:17px;font-weight:500;margin:0;flex:1;line-height:1.3;text-wrap:balance}
+.ph .meta{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+.close{border:0;background:transparent;color:var(--ink-soft);font-size:20px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:3px}
+/* the title is the rename field: it looks like a title until you point at it */
+#pTitle[contenteditable="true"]{cursor:text;border-radius:4px;outline:none;transition:box-shadow .15s}
+#pTitle[contenteditable="true"]:hover{box-shadow:0 0 0 5px var(--surface)}
+#pTitle[contenteditable="true"]:focus{box-shadow:0 0 0 5px var(--surface),0 0 0 6px var(--ink-faint)}
+.body{flex:1;overflow-y:auto;padding:14px 20px 20px;display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--ink-faint)}
+.m{max-width:88%;font-size:14px;line-height:1.5}
+.m.you{align-self:flex-end;background:var(--surface);padding:9px 13px;border-radius:12px 12px 3px 12px}
+.m.ai{align-self:flex-start}
+.m.agent{align-self:flex-start;padding-left:11px;border-left:2px solid var(--ink-faint)}
+.m.agent small{display:block;font-size:11.5px;color:var(--ink-soft)}
+.m.agent.out{align-self:flex-end;border-left:0;border-right:2px solid var(--ink-faint);padding-left:0;padding-right:11px;text-align:right}
+.fold{align-self:flex-start;font:inherit;font-family:var(--mono);font-size:11px;color:var(--ink-faint);background:none;border:0;padding:0;cursor:pointer}
+.fsteps{font-family:var(--mono);font-size:11px;color:var(--ink-soft);display:flex;flex-direction:column;gap:3px;margin-top:-6px}
+.m.ask{align-self:stretch;max-width:none;border:1px solid var(--signal);border-radius:8px;padding:11px 13px;display:flex;flex-direction:column;gap:10px}
+.m.ask code{font-family:var(--mono);font-size:12.5px}
+.time{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);align-self:center}
+.live{display:flex;align-items:center;gap:9px;padding:9px 20px;font-family:var(--mono);font-size:12px;color:var(--ink-soft);border-top:1px solid var(--ink-faint)}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--ink);flex:none;animation:breathe 1.6s ease-in-out infinite}
+.compose{padding:12px 16px 16px;border-top:1px solid var(--ink-faint);font-size:12.5px;color:var(--ink-soft)}
+.compose textarea{width:100%;box-sizing:border-box;font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--ink-faint);border-radius:8px;padding:10px 12px;resize:none;min-height:64px;outline:none}
+.app.waiting .compose textarea{border-color:var(--signal)}
+.doctext{display:flex;flex-direction:column;gap:10px}
+.doctext h3{font-size:14px;font-weight:600;margin:6px 0 0}
+.doctext p,.doctext li{font-size:14px;margin:0}
+.doctext ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.doctext.editable{cursor:text;border-radius:4px;margin:-6px;padding:6px;transition:box-shadow .15s}
+.doctext.editable:hover{box-shadow:0 0 0 1px var(--ink-faint)}
+.mdedit{width:100%;box-sizing:border-box;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--ink);background:var(--surface);border:1px solid var(--ink-soft);border-radius:6px;padding:10px 12px;resize:vertical;outline:none}
+.doctext .used{display:block;font-size:12.5px;color:var(--ink-soft);border-top:1px solid var(--ink-faint);padding-top:12px;margin-top:6px}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--signal);outline-offset:1px}
+
+.explain{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:24px 32px}
+.explain div{display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink-soft)}
+.explain b{color:var(--ink);font-weight:500;font-size:14.5px}
+.explain ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.legend{display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
+@media (max-width:700px){.app.side .lens{display:none}.pin{width:calc(100vw - 32px)}.mini{display:none}.status{left:16px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Orbit · Moodboard, Entwurf 22</h1>
+    <p class="thesis">Ein Canvas, Projekte als Inseln. Was dich braucht, zeigt sich auch außerhalb des Blickfelds, am Rand und auf der Karte. Und du kannst einer Session einfach sagen, was sie tun soll.</p>
+  </header>
+
+  <div class="app" id="app">
+    <div class="lens" id="lens" tabindex="0" aria-label="Board, Pfeiltasten bewegen, Fragezeichen zeigt alle Tasten">
+      <div class="world" id="world"><svg class="isl" id="isl" viewBox="0 0 1400 800"></svg><svg class="links" id="links" viewBox="0 0 1400 800"></svg></div>
+      <div class="edges" id="edges"></div>
+    <!-- board chrome lives inside the visible canvas, so it moves left when the sidebar opens -->
+    <div class="ear" id="ear" hidden><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span>Orbit hört zu</span><span class="to" id="earTo"></span></div>
+    <div class="mini" id="mini" aria-label="Karte"><canvas id="miniC"></canvas></div>
+    <div class="status" id="status"></div>
+    <div class="scale">
+      <button class="help" id="helpBtn" aria-label="Tastenkürzel anzeigen">?</button>
+      <button class="l0" data-l="0" aria-label="Weit"></button><button class="l1" data-l="1" aria-label="Mittel"></button><button class="l2" data-l="2" aria-label="Nah"></button>
+    </div>
+    <div class="ov keys" id="keys" hidden>
+      <h4>BEWEGEN</h4>
+      <kbd>← ↑ → ↓</kbd><span>Board verschieben</span>
+      <kbd>⇧ ← ↑ → ↓</kbd><span>zum nächsten Element in dieser Richtung</span>
+      <kbd>W · Q</kbd><span>zum nächsten oder vorherigen, was dich braucht</span>
+      <kbd>?</kbd><span>diese Übersicht ein und aus</span>
+      <kbd>N</kbd><span>neue Session in der aktiven Insel</span>
+      <kbd>Entf · ⌘Z</kbd><span>vom Board nehmen, rückgängig</span>
+      <kbd>F2</kbd><span>umbenennen</span>
+      <kbd>G, dann Buchstabe</kbd><span>zur Insel springen, z. B. G O für orbit</span>
+      <kbd>+ −</kbd><span>eine Stufe näher oder weiter</span>
+      <kbd>Esc</kbd><span>schließen</span>
+      <h4>HANDELN</h4>
+      <kbd>Leertaste</kbd><span>in der Blase antworten</span>
+      <kbd>⌥ Leertaste · M</kbd><span>Zuhören ein und aus: an die Session im Fokus, sonst an die, deren Namen du nennst</span>
+      <kbd>Enter</kbd><span>Gespräch oder Dokument rechts öffnen</span>
+      <kbd>E · A</kbd><span>Rückfrage erlauben oder ablehnen</span>
+      <kbd>S</kbd><span>später: gesehen, jetzt keine Antwort</span>
+      <kbd>V</kbd><span>verbinden: Ziel mit Pfeilen wählen, Enter</span>
+    </div>
+    </div>
+    <aside class="panel" aria-label="Details"><div class="pin">
+      <div class="ph"><div class="row"><h2 id="pTitle"></h2><button class="icon-btn" id="pArch" aria-label="Vom Board nehmen"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3"/></svg></button><button class="close" id="pClose" aria-label="Schließen">×</button></div><div class="meta" id="pMeta"></div><div class="pacts" id="pActs"></div></div>
+      <div class="body" id="pBody"></div>
+      <div class="live" id="pLive" hidden><i></i><span></span></div>
+      <div class="compose" id="pCompose" hidden></div>
+    </div></aside>
+  </div>
+
+  <div class="explain">
+    <div><b>Luft</b><ul>
+      <li>Blasen halten Abstand zum Punkt und zum Namen.</li>
+      <li>Sie weichen auch Linien aus, nicht nur anderen Blasen und Punkten.</li>
+      <li>Zwischen zwei Blasen bleibt immer ein deutlicher Spalt. Lieber zeigt eine weniger.</li></ul></div>
+    <div><b>Wem eine Session gehört</b><ul>
+      <li><span class="legend">Punkt mit Ring</span>: läuft in Orbit, du kannst antworten.</li>
+      <li><span class="legend">Punkt ohne Ring</span>: läuft in VS Code oder im Terminal. Orbit sieht zu, „Übernehmen“ holt sie her.</li>
+      <li><span class="legend">Raute</span>: Agent in der Cloud. Antworten werden ein Kommentar auf GitHub.</li>
+      <li><span class="legend">Punkt mit Mond</span>: ein dauerhafter Agent mit Rolle und Auslöser, etwa der Roadmap-Pfleger. Jeder Lauf ist eine Session. Wird ein PR gemergt, trägt er ihn in die Roadmap ein.</li></ul></div>
+    <div><b>Wo bin ich</b><ul>
+      <li>Inseln sind feste Rahmen. Zieh den Namen, um eine Insel zu verschieben, die Ecke unten rechts, um sie größer zu machen. Legst du etwas über den Rand, wächst sie einmal mit.</li>
+      <li>Rahmen überlappen nie. Zoomen und Hovern ändern nichts an ihrer Größe, Text wird am Rand gekürzt oder ausgeblendet.</li>
+      <li>Die Karte unten links zeigt alle Inseln, deinen Ausschnitt und, in Orange, was dich braucht. Zieh den Rahmen, um den Ausschnitt zu verschieben.</li>
+      <li>Liegt so etwas außerhalb, zeigt ein Hinweis am Rand in seine Richtung. Hinweise weichen allem aus, was du siehst. Ein Klick fliegt hin.</li>
+      <li>Braucht deine Blase die Ecke der Karte, macht sich die Karte klein, statt dass das Board rutscht.</li>
+      <li>Verschieben: zwei Finger auf dem Trackpad, Pfeiltasten oder Ziehen auf freier Fläche. Zoomen: Pinch oder ⌘ + Scrollen.</li>
+      <li>Schreibt eine Session ins Gedächtnis, sagt das Gedächtnis kurz, was neu ist und von wem.</li></ul></div>
+    <div><b>Sprechen</b><ul>
+      <li><kbd>⌥ Leertaste</kbd> oder <kbd>M</kbd> schaltet das Zuhören ein und aus. Oben erscheint, dass Orbit zuhört und wohin der Text geht.</li>
+      <li>Der Text geht dorthin, wo dein Fokus ist: offenes Gespräch, Blase, gewählte oder überfahrene Session.</li>
+      <li>Ohne Fokus entscheidet der Anfang: „An Pipeline …“ fliegt dorthin.</li>
+      <li>Keine Mikrofon-Knöpfe. Im Entwurf ist die Erkennung simuliert.</li></ul></div>
+  </div>
+</div>
+
+<script>
+const ISL0={orbit:{c:"O"},kestrel:{c:"G"},meridian:{c:"L"}};
+const I=[
+ {id:"s1",k:"session",ws:"orbit",own:"own",x:170,y:270,t:"Transcript-Import beschleunigen",st:"work",ago:0,br:"main",now:"Bearbeitet test/orbit.test.ts",
+  pr:{n:28,state:"ready",text:"mergebar, CI grün"},
+  log:[["you","Der Import der Transcripts dauert beim Start 4 Sekunden, kannst du das cachen?",52],["tool","Gelesen: src/sources/claude/transcripts.ts",51],["ai","Jede Datei wird bei jedem Start komplett geparst. Ich merke mir mtime und Größe und überspringe unveränderte Dateien.",41],["you","Gut, mit Test bitte.",4],["tool","Bearbeitet: src/sources/claude/transcripts.ts",3],["tool","Bearbeitet: test/core.test.ts",2],["ai","Der Cache ist drin, jetzt kommt der Test.",2]]},
+ {id:"s2",k:"session",ws:"orbit",own:"obs",app:"VS Code",x:470,y:330,t:"Moodboard für das Design System",st:"wait",ago:2,br:"main",
+  log:[["agent","Transcript-Import beschleunigen","Die Felder firstPrompt und lastAnswer sind jetzt im State.",14,"in"],["you","Das ist noch zu gedrungen.",9],["tool","Bearbeitet: web/style.css",5],["ai","Blasen halten jetzt Abstand zu Punkten, Namen und Linien.",4],["ai","Sollen Hinweise am Rand auch für fertige Sessions erscheinen oder nur für wartende?",2]]},
+ {id:"s3",k:"session",ws:"orbit",own:"obs",app:"Terminal",x:150,y:470,t:"Hook-Timeout prüfen",st:"rest",ago:180,br:"main",
+  log:[["you","Blockiert der Hook, wenn der Server nicht läuft?",190],["tool","Gelesen: hooks/orbit-hook.sh",189],["ai","Nein. curl bricht nach 300 ms ab und der Hook endet immer mit 0.",182]]},
+ {id:"d1",k:"doc",ws:"orbit",x:330,y:170,t:"Roadmap",src:"README.md",used:["s1","s2"],
+  md:"### Stufe 1\n- Hook-Events empfangen und speichern\n- Board mit Sessions je Workspace\n\n### Stufe 2\n- Transcript-Import\n- Eigene Anordnung auf dem Board\n\n### Stufe 3\n- Eigene Sessions über das Agent SDK\n- Sessions verbinden, MCP-Postfach\n- Dateien und Gedächtnis auf dem Board"},
+ {id:"d2",k:"doc",ws:"orbit",x:360,y:500,t:"ADR-0010 Sessions",src:"docs/adr/0010-observed-and-owned-sessions.md",used:["s2"],
+  md:"Beobachtete Sessions bleiben nur lesbar. Interaktion läuft über Sessions, die Orbit selbst über das Agent SDK betreibt.\n\n### Übernehmen\nSetzt eine beobachtete Session in Orbit fort, nach Bestätigung. Orbit warnt, wenn das ursprüngliche Programm sie noch offen hat."},
+ {id:"m1",k:"memory",ws:"orbit",x:100,y:300,t:"Gedächtnis",src:"~/.claude/projects/…/memory",used:["s1","s3"],
+  md:"- Grundlegende Entscheidungen trifft der Nutzer, Optionen mit Empfehlung vorlegen.\n- Jede strukturelle Entscheidung wird ein ADR.\n- Commits nur auf Ansage."},
+ {id:"s4",k:"session",ws:"kestrel",own:"remote",app:"GitHub",x:720,y:250,t:"Intro-Requests zusammenführen",st:"work",ago:0,br:"feat/intro-merge",now:"bun test · 12 grün, 2 rot",
+  pr:{n:31,state:"fail",text:"CI rot, 2 Tests"},
+  log:[["you","Doppelte Intro-Requests sollen beim Upsert erkannt werden.",45],["tool","Gelesen: src/intro.ts",44],["ai","Ich gleiche über Person und Organisation ab, unabhängig von Groß- und Kleinschreibung.",31],["agent","Pipeline-Ansicht nach Stufe","Ich brauche die Stufe am Intro-Request. Kommt die mit eurer Migration?",15,"in"],["ai","Ja, die Spalte stage kommt mit Migration 014.",14],["tool","Bearbeitet: migrations/014_merge.sql",8],["tool","bun test · 12 grün, 2 rot",1],["ai","Zwei Tests sind noch rot, ich sehe mir die Migration an.",1]]},
+ {id:"s5",k:"session",ws:"kestrel",own:"own",x:940,y:300,t:"Pipeline-Ansicht nach Stufe",st:"wait",ago:11,br:"feat/pipeline",
+  log:[["you","Gruppiere die Pipeline nach Stufe und sortiere nach letztem Kontakt.",38],["tool","Gelesen: src/pipeline.ts",37],["agent","Intro-Requests zusammenführen","Ich brauche die Stufe am Intro-Request. Kommt die mit eurer Migration?",15,"out"],["agent","Intro-Requests zusammenführen","Ja, die Spalte stage kommt mit Migration 014.",14,"in"],["tool","Bearbeitet: src/pipeline.ts",12],["ask","Darf ich die Migration ausführen?","bun run migrate",11]]},
+ {id:"d3",k:"doc",ws:"kestrel",x:820,y:440,t:"Datenmodell",src:"docs/datamodel.md",used:["s4","s5"],
+  md:"Person, Organisation und Intro-Request sind die Kernobjekte.\n\n### Intro-Request\nVerbindet genau zwei Personen und hat eine Stufe: angefragt, vorgestellt, pausiert, abgeschlossen."},
+ /* Agents: lasting roles with a trigger. Each run is a session that belongs to the agent (ADR-0015). */
+ {id:"a1",k:"session",agent:true,ws:"orbit",own:"own",x:520,y:200,t:"Roadmap-Pfleger",st:"rest",ago:200,br:"main",
+  role:"Trägt Gemergtes in die Roadmap im README ein.",trigger:"nach jedem Merge in main",
+  runs:[{t:"PR #27 eingetragen",ago:200},{t:"PR #25 eingetragen",ago:1500}],
+  log:[["ai","PR #27 ist in der Roadmap unter Stufe 2 eingetragen.",200]]},
+ {id:"a2",k:"session",agent:true,ws:"kestrel",own:"own",x:990,y:450,t:"PR-Prüfer",st:"wait",ago:6,br:"—",
+  role:"Prüft jeden neuen PR auf Tests und Datenmodell.",trigger:"bei jedem neuen PR",
+  runs:[{t:"PR #31 geprüft",ago:6},{t:"PR #30 geprüft",ago:400}],
+  log:[["agent","Intro-Requests zusammenführen","PR #31 ist offen.",8,"in"],["tool","gh pr diff 31",7],["ai","PR #31 ändert die Spalte stage ohne Default. Soll ich das im Review anmerken oder direkt der Session schreiben?",6]]},
+ {id:"s6",k:"session",ws:"meridian",own:"obs",app:"VS Code",x:1150,y:700,t:"Evaluationsrunde exportieren",st:"done",ago:40,br:"main",
+  log:[["you","Export der Runde als CSV für das Partner-Meeting.",60],["tool","Bearbeitet: exports/runde-12.csv",41],["ai","Fertig. Die Datei liegt unter exports/runde-12.csv, 48 Zeilen.",40]]},
+ {id:"s7",k:"session",ws:"meridian",own:"own",x:1290,y:560,t:"Onboarding-Status reparieren",st:"work",ago:1,br:"fix/onboarding",now:"Bearbeitet src/onboarding/state.ts",
+  log:[["you","Der Onboarding-Status springt nach dem Login zurück auf „offen“.",58],["tool","Gelesen: src/onboarding/state.ts",57],["ai","Gefunden: Der Cache wird vor dem Commit gelesen.",21],["you","Kannst du das hinter die Transaktion schieben?",6],["tool","Bearbeitet: src/onboarding/state.ts",2],["ai","Mache ich gerade.",1]]},
+];
+/* Where each session works and with which model (ADR-0017).
+   wt: "worktree" (own branch in its own folder), "main" (the main checkout), "cloud" (the cloud service decides). */
+const MODELS={opus:{n:"Opus 5.5",d:"am gründlichsten"},sonnet:{n:"Sonnet 5.5",d:"ausgewogen"},haiku:{n:"Haiku 5.5",d:"schnell und günstig"}};
+const SETUP={s1:{wt:"worktree",path:".worktrees/transcript-cache",br:"feat/transcript-cache",model:"opus"},s2:{wt:"main",model:"sonnet"},s3:{wt:"main",model:"sonnet"},
+  s4:{wt:"cloud",model:null},s5:{wt:"worktree",path:".worktrees/pipeline",model:"opus"},a1:{wt:"main",model:"haiku"},a2:{wt:"main",model:"sonnet"},
+  s6:{wt:"main",model:"sonnet"},s7:{wt:"worktree",path:".worktrees/onboarding",model:"sonnet"}};
+I.forEach(o=>{const s=SETUP[o.id];if(s){o.wt=s.wt;o.wtPath=s.path;o.model=s.model;if(s.br)o.br=s.br}});
+const EFFORTS={low:"wenig nachdenken",medium:"normal nachdenken",high:"gründlich nachdenken"};
+const EFF_SHORT={low:"wenig",medium:"normal",high:"gründlich"};
+I.forEach(o=>{if(o.model&&!o.effort)o.effort=o.agent?"low":"medium"});
+/* folders without git: no worktree, no branch, no PRs. (Several repos in one folder are out of scope for now.) */
+const GIT={orbit:true,kestrel:true,meridian:true};
+const hasGit=ws=>GIT[ws]!==false;
+const wtLabel=o=>!hasGit(o.ws)?"Ordner ohne Git":o.wt==="worktree"?`Worktree ${o.wtPath}`:o.wt==="cloud"?"in der Cloud":"Haupt-Checkout";
+const modelLabel=o=>o.model?`${MODELS[o.model].n} · ${EFF_SHORT[o.effort||"medium"]}`:"";
+/* only sessions Orbit runs itself can switch models; observed ones show theirs, cloud agents have none to choose */
+const canPickModel=o=>o.own==="own";
+/* other active sessions working in the same main checkout: they can overwrite each other's files */
+const sharesCheckout=o=>o.wt!=="main"||!(o.st==="work"||o.st==="wait")?[]:I.filter(x=>x!==o&&x.k==="session"&&x.ws===o.ws&&x.wt==="main"&&(x.st==="work"||x.st==="wait"));
+const TYPES={hands:{l:"übergibt an",dir:true},waits:{l:"wartet auf",dir:true},topic:{l:"gleiches Thema",dir:false}};
+let L=[{a:"s1",b:"s2",ty:"hands",last:"Die Felder firstPrompt und lastAnswer sind jetzt im State."},{a:"s5",b:"s4",ty:"waits",last:"Ja, die Spalte stage kommt mit Migration 014."}];
+try{const S=JSON.parse(localStorage.getItem("orbit-mood-16")||"null");if(S){S.i?.forEach(([id,x,y])=>{const o=I.find(o=>o.id===id);if(o){o.x=x;o.y=y}});if(S.l)L=S.l}}catch{}
+const save=()=>{if(checking)return;try{localStorage.setItem("orbit-mood-16",JSON.stringify({i:I.filter(o=>!o.draft).map(o=>[o.id,o.x,o.y]),l:L}))}catch{}};
+
+const $=id=>document.getElementById(id),lens=$("lens"),world=$("world"),svg=$("links"),isl=$("isl"),app=$("app"),NS="http://www.w3.org/2000/svg";
+const get=id=>I.find(o=>o.id===id);
+const ago=m=>m<1?"jetzt":m<60?`vor ${m} min`:m<1440?`vor ${Math.round(m/60)} h`:`vor ${Math.round(m/1440)} Tagen`;
+const esc=t=>t.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const cut=(t,n)=>t.length>n?t.slice(0,n-1)+"…":t;
+const lastOf=(o,k)=>{for(let i=o.log.length-1;i>=0;i--)if(k.includes(o.log[i][0]))return o.log[i];return null};
+const lastSaid=o=>lastOf(o,["ai","ask"])?.[1]||"";
+const pendingAsk=o=>{const m=o.log.at(-1);return m&&m[0]==="ask"?m:null};
+const lineGlyph=t=>`<svg viewBox="0 0 26 8"><line x1="1" y1="4" x2="25" y2="4" ${t==="waits"?'stroke-dasharray="4 3"':t==="topic"?'stroke-dasharray="1 3" stroke-linecap="round"':""}/></svg>`;
+/* Minimal Markdown for documents and memory: ### headings, - lists, paragraphs. Everything is escaped first. */
+function mdToHtml(md){
+  const out=[];let list=false,para=[];
+  const flushP=()=>{if(para.length){out.push(`<p>${para.join(" ")}</p>`);para=[]}};
+  const closeL=()=>{if(list){out.push("</ul>");list=false}};
+  for(const raw of String(md||"").split("\n")){const line=esc(raw.trimEnd());
+    if(/^#{1,6}\s/.test(line)){flushP();closeL();out.push(`<h3>${line.replace(/^#+\s/,"")}</h3>`)}
+    else if(/^[-*]\s/.test(line)){flushP();if(!list){out.push("<ul>");list=true}out.push(`<li>${line.slice(2)}</li>`)}
+    else if(!line.trim()){flushP();closeL()}
+    else{closeL();para.push(line)}}
+  flushP();closeL();return out.join("");
+}
+function setMd(o,md){o.md=md;o.text=mdToHtml(md)}
+I.forEach(o=>{if(o.md!=null)o.text=mdToHtml(o.md)});
+const ARCH=`<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3"/></svg>`;
+const MIC=`<svg viewBox="0 0 14 14"><rect x="4.5" y="1" width="5" height="8" rx="2.5"/><path d="M2.5 7a4.5 4.5 0 0 0 9 0M7 11.5V13"/></svg>`;
+/* attention: what makes an item show up on the minimap and at the screen edge */
+/* "Später": you have seen it and decided not to answer now. It leaves the attention set until the session says something new
+   (reuses the "acknowledged" flag the claude source already has, ADR-0005). */
+const attention=o=>o.snoozed?null:o.st==="wait"?"wartet":o.st==="done"?"fertig":o.pr&&o.pr.state==="fail"&&!o.pr.fixing?"CI rot":o.pr&&o.pr.state==="ready"?"mergebar":null;
+/* ---------- pull requests: one row for bubble and detail panel ---------- */
+const REPO={orbit:"mbernath/orbit",kestrel:"acme/kestrel",meridian:"acme/meridian"};
+const prUrl=o=>`https://github.com/${REPO[o.ws]}/pull/${o.pr.n}`;
+const prAtt=o=>!!o.pr&&(o.pr.state==="ready"||o.pr.state==="fail"&&!o.pr.fixing);
+function prRow(o){
+  const p=o.pr,att=prAtt(o);
+  /* one status line, then (if any) one row of buttons */
+  let h=`<div class="prline"><a class="pr${att?" att":""}" href="${prUrl(o)}" target="_blank" rel="noopener">PR #${p.n}</a><span>${esc(p.fixing?"Session behebt das Problem"+(p.thenMerge?" und mergt danach":"")+" …":p.text)}</span></div>`;
+  if(p.state==="ready")h+=p.confirm?`<div class="prnote">Squash-Merge in main, Branch löschen?</div><div class="btnrow"><button class="btn primary" data-a="merge-go">Mergen</button><button class="btn" data-a="merge-no">Abbrechen</button></div>`:`<div class="btnrow"><button class="btn" data-a="merge">Mergen …</button></div>`;
+  /* not mergeable: hand the problem to the session itself, optionally with the order to merge once it is green */
+  else if(p.state==="fail"&&!p.fixing)h+=o.own==="obs"?`<div class="prnote">Übernimm die Session, um sie das beheben zu lassen.</div>`
+    :`<div class="btnrow"><button class="btn primary" data-a="fix-merge">Beheben und mergen</button><button class="btn" data-a="fix">Nur beheben</button></div>`;
+  return h;
+}
+let openId=null,focusId=null,hoverId=null,replyId=null;
+
+/* ---------- islands ---------- */
+const islNames={};
+/* display names of islands; the key stays the workspace id */
+const WSN={};const wsName=k=>WSN[k]||k;
+function addIslandUI(k){
+  const e=document.createElement("div");e.className="isname";e.dataset.ws=k;
+  e.innerHTML=`<span><b class="nm">${esc(wsName(k))}</b><button class="add" data-ws="${k}" aria-label="Neues in ${esc(wsName(k))}">+</button></span>`;
+  world.append(e);islNames[k]=e;
+  const g=document.createElement("div");g.className="fgrip";g.dataset.ws=k;world.append(g);grips[k]=g;
+}
+const grips={};
+/* Islands are fixed frames in world coordinates (ADR-0012). Only user actions change them; text never does. */
+const FR={orbit:{x:40,y:90,w:580,h:480},kestrel:{x:660,y:150,w:400,h:390},meridian:{x:1100,y:500,w:330,h:290}};
+/* storage keys renamed: layouts saved by earlier drafts (including frames the old self-check grew) are ignored */
+try{const S=JSON.parse(localStorage.getItem("orbit-mood-16f")||"null");if(S)Object.assign(FR,S)}catch{}
+const saveFrames=()=>{if(checking)return;try{localStorage.setItem("orbit-mood-16f",JSON.stringify(FR))}catch{}};
+const FGAP=28,FPAD=36,FTOP=46;
+const hulls=()=>Object.fromEntries(Object.entries(FR).map(([k,f])=>[k,{x1:f.x,y1:f.y,x2:f.x+f.w,y2:f.y+f.h}]));
+const framesOverlap=(a,b)=>a.x<b.x+b.w+FGAP&&b.x<a.x+a.w+FGAP&&a.y<b.y+b.h+FGAP&&b.y<a.y+a.h+FGAP;
+const frameFree=(k,f)=>Object.entries(FR).every(([j,g])=>j===k||!framesOverlap(f,g));
+/* inner area where an element's dot may sit */
+const inner=f=>({x1:f.x+FPAD,y1:f.y+FTOP,x2:f.x+f.w-FPAD,y2:f.y+f.h-FPAD});
+Object.keys(FR).forEach(addIslandUI);
+/* active island: the one holding the element you work with, else the one under the pointer */
+let pointerWs=null;
+/* the island you clicked into (on free space) stays active until you click elsewhere */
+let selWs=null;
+function activeWs(){const id=replyId||openId||focusId||hoverId;return id&&get(id)?get(id).ws:selWs||pointerWs}
+function markActive(){const a=activeWs();isl.querySelectorAll("rect").forEach(r=>r.classList.toggle("active",r.dataset.ws===a));
+  Object.entries(islNames).forEach(([k,e])=>e.classList.toggle("active",k===a))}
+function drawIslands(){
+  isl.innerHTML="";
+  Object.entries(FR).forEach(([k,f])=>{const r=document.createElementNS(NS,"rect");r.dataset.ws=k;
+    r.setAttribute("x",f.x);r.setAttribute("y",f.y);r.setAttribute("width",f.w);r.setAttribute("height",f.h);r.setAttribute("rx",28);isl.append(r);
+    islNames[k].style.left=(f.x+18)+"px";islNames[k].style.top=(f.y+14)+"px";grips[k].style.left=(f.x+f.w)+"px";grips[k].style.top=(f.y+f.h)+"px"});
+  markActive();
+}
+
+/* ---------- items ---------- */
+function thread(o){
+  const out=[];let steps=0;
+  for(let i=o.log.length-1;i>=0&&out.length<3;i--){const m=o.log[i];
+    if(m[0]==="tool"){steps++;continue}
+    if(steps){out.push(`<div class="tm steps1">${steps} ${steps>1?"Schritte":"Schritt"}</div>`);steps=0}
+    if(m[0]==="you")out.push(`<div class="tm you">${m[3]||esc(m[1])}</div>`);
+    else if(m[0]==="agent")out.push(`<div class="tm agent"><small>${m[4]==="out"?"an":"von"} ${esc(cut(m[1],34))}</small>${esc(m[2])}</div>`);
+    else out.push(`<div class="tm">${esc(m[1])}</div>`)}
+  return out.reverse().join("");
+}
+function render(o){
+  const n=o.el||document.createElement("div");
+  n.className=`item ${o.k}${o.st?" "+o.st:""}${o.own?" "+o.own:""}${openId===o.id?" open":""}${focusId===o.id?" kfocus":""}${o.snoozed?" snoozed":""}`+["sl","sb","prio","hiding"].filter(c=>n.classList.contains(c)).map(c=>" "+c).join("");
+  if(n.dataset.t===undefined)n.dataset.t="0";
+  n.dataset.id=o.id;n.style.left=o.x+"px";n.style.top=o.y+"px";n.setAttribute("aria-label",o.t);
+  let c="",prChip="";
+  if(o.k==="session"){
+    const you=lastOf(o,["you"]),ask=pendingAsk(o),tools=o.log.filter(m=>m[0]==="tool");
+    const files=[...new Set(tools.filter(m=>m[1].startsWith("Bearbeitet: ")).map(m=>m[1].slice(12).split("/").pop()))];
+    const rels=L.filter(k=>k.a===o.id||k.b===o.id).map(k=>{const other=get(k.a===o.id?k.b:k.a);
+      return `<div>${lineGlyph(k.ty)}${k.a===o.id?`${TYPES[k.ty].l} ${esc(cut(other.t,30))}`:`${esc(cut(other.t,30))} ${TYPES[k.ty].l} ihr`}</div>`}).join("");
+    let prHtml="";
+    if(o.pr){const att=prAtt(o);prChip=`<a class="pr${att?" att":""}" href="${prUrl(o)}" target="_blank" rel="noopener">#${o.pr.n}</a>`;
+      prHtml=`<div class="prrow${att?" att":""}">${prRow(o)}</div>`}
+    const where=o.own==="obs"?`Läuft in ${o.app}. Orbit sieht nur zu.`:o.own==="remote"?"Agent in der Cloud auf GitHub.":"";
+    c+=(o.agent&&!o.draft?`<div class="role">${esc(o.role)} · ${esc(o.trigger)}</div>`:o.agent?"":you?`<div class="ctx"><b>Du</b>${esc(you[1])}</div>`:"")+`<div class="said">${esc(lastSaid(o))}</div>`+
+      `<div class="thread">${thread(o)}</div>`+
+      (o.st==="work"&&o.now?`<div class="now"><i></i>${esc(o.now)}</div>`:"")+
+      `<div class="deep">${tools.length?`<div class="steps">${tools.slice(-3).map(m=>`<div>${esc(m[1])}</div>`).join("")}</div>`:""}`+
+      (files.length?`<div class="files">${files.map(f=>`<span>${esc(f)}</span>`).join("")}</div>`:"")+(rels?`<div class="rels">${rels}</div>`:"")+
+      (o.agent&&o.runs.length?`<div class="runs">${o.runs.slice(0,3).map(r=>`<div><span>${ago(r.ago)}</span>${esc(r.t)}</div>`).join("")}</div>`:"")+
+      (where?`<div style="font-size:12px;color:var(--ink-soft)">${where}</div>`:"")+
+      (o.wt&&!o.draft?`<div class="wtline">${[o.wt!=="cloud"?esc(wtLabel(o)):"",modelLabel(o)].filter(Boolean).join(" · ")}${sharesCheckout(o).length?` · <span class="warn">teilt Dateien mit „${esc(cut(sharesCheckout(o)[0].t,26))}“</span>`:""}</div>`:"")+`</div>`+
+      /* actions always come last, after the latest message: PR status and its buttons, a pending question, an agent's manual run */
+      prHtml+
+      (ask&&o.own==="own"?`<div class="asks"><button class="btn primary" data-a="allow">Erlauben</button><button class="btn" data-a="deny">Ablehnen</button><button class="btn quiet" data-a="later">Später</button></div>`
+        :(o.st==="wait"||o.st==="done")&&!o.snoozed?`<div class="asks"><button class="btn quiet" data-a="later">${o.st==="done"?"Gesehen":"Später"}</button></div>`:"")+
+      (o.agent&&!o.draft?`<div class="asks agentrun"><button class="btn" data-a="run">Jetzt ausführen</button></div>`:"");
+    if(o.own==="obs")c+=`<div class="own-note">${o.confirmTake?`Übernehmen? ${o.app} hat die Session vielleicht noch offen. Dort sollte sie danach nicht weiterlaufen.<div class="asks" style="display:flex"><button class="btn primary" data-a="take-go">Übernehmen</button><button class="btn" data-a="take-no">Abbrechen</button></div>`:`Läuft in ${o.app}. Um hier zu antworten, hol sie nach Orbit.<div class="asks" style="display:flex"><button class="btn" data-a="take">Übernehmen …</button></div>`}</div>`;
+    else c+=`<div class="reply"><div class="field"><textarea id="reply-${o.id}" placeholder="${o.draft&&o.agent?`Was soll der Agent in ${esc(wsName(o.ws))} dauerhaft tun?`:o.draft?`Was soll die neue Session in ${esc(wsName(o.ws))} tun?`:o.own==="remote"?"Kommentar auf GitHub …":o.st==="wait"?"Claude wartet auf deine Antwort …":"Antworten …"}"></textarea></div>`+
+      (o.draft&&o.agent?`<input class="trig-in" id="trig-${o.id}" placeholder="Wann? z. B. nach jedem Merge in main">`:"")+
+      /* before the first prompt: where it will work and with which model, each one click to change */
+      (o.draft?`<div class="setline">${hasGit(o.ws)?`<button class="lnk" data-a="pick-wt">${o.wt==="worktree"?"eigener Worktree":"Haupt-Checkout"}</button>`:`<span>Ordner ohne Git</span>`}<span>·</span><button class="lnk" data-a="pick-model">${modelLabel(o)}</button></div>`:"")+`</div>`;
+  }
+  if(o.news)c+=`<div class="news"><small>Neu · von ${esc(cut(o.news.from,34))}</small>${esc(o.news.text)}</div>`;
+  if(o.md!=null)c+=`<div class="peek">${o.text||`<p>Leer.</p>`}${o.used.length?`<div class="used">Zuletzt verwendet von ${o.used.map(id=>get(id)?esc(get(id).t):"").filter(Boolean).join(", ")}</div>`:""}</div>`;
+  const ta=n.querySelector(".reply textarea"),draft=ta?ta.value:"",had=ta&&document.activeElement===ta;
+  const ti=n.querySelector(".trig-in"),tdraft=ti?ti.value:"",thad=ti&&document.activeElement===ti;
+  n.innerHTML=`<div class="ui">${o.k==="session"?`<div class="knob" title="Mit anderer Session verbinden"></div>`:""}<div class="glyph"></div>${o.agent?`<div class="moon"></div>`:""}<div class="lab" data-p="${o.lp||"e"}"><span>${esc(o.t)}</span>${prChip}</div><div class="bub" data-p="${o.bp||"ne"}">${c}</div></div>`;
+  const t2=n.querySelector(".reply textarea");if(t2){t2.value=draft;bindReply(t2,o);if(had)t2.focus()}
+  const ti2=n.querySelector(".trig-in");if(ti2){ti2.value=tdraft;bindTrigger(ti2,o);if(thad)ti2.focus()}
+  n.classList.toggle("prrow-att",prAtt(o)||!!o.pr?.fixing);
+  const th=n.querySelector(".thread");if(th)th.scrollTop=th.scrollHeight;
+  if(!o.el){world.append(n);o.el=n}
+}
+
+/* ---------- links ---------- */
+const gH=document.createElementNS(NS,"g"),gL=document.createElementNS(NS,"g"),gP=document.createElementNS(NS,"g");svg.append(gH,gL,gP);
+function drawLinks(){
+  gL.innerHTML="";
+  L.forEach((k,i)=>{const a=get(k.a),b=get(k.b);if(!a||!b)return;
+    const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d,pad=13/cam.s;
+    const x1=a.x+ux*pad,y1=a.y+uy*pad,x2=b.x-ux*pad,y2=b.y-uy*pad,mx=(x1+x2)/2,my=(y1+y2)/2;
+    const g=document.createElementNS(NS,"g");g.setAttribute("class","lk "+k.ty);g.dataset.a=k.a;g.dataset.b=k.b;
+    let h=`<line class="hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/><line class="ln" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    if(TYPES[k.ty].dir){const s=4/cam.s,px=-uy,py=ux;h+=`<polygon class="arr" points="${mx+ux*s},${my+uy*s} ${mx-ux*s+px*s*.7},${my-uy*s+py*s*.7} ${mx-ux*s-px*s*.7},${my-uy*s-py*s*.7}"/>`}
+    g.innerHTML=h;const hit=g.querySelector(".hit");
+    hit.addEventListener("pointerdown",e=>e.stopPropagation());hit.addEventListener("click",e=>{const r=lens.getBoundingClientRect();linkMenu(i,e.clientX-r.left,e.clientY-r.top)});
+    gL.append(g)});
+}
+function pulse(k,cb){
+  const a=get(k.a),b=get(k.b),c=document.createElementNS(NS,"circle");c.setAttribute("class","pulse");gP.append(c);
+  const t0=performance.now(),D=matchMedia("(prefers-reduced-motion: reduce)").matches?1:1100;
+  const st=now=>{const t=Math.min(1,(now-t0)/D),e=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+    c.setAttribute("cx",a.x+(b.x-a.x)*e);c.setAttribute("cy",a.y+(b.y-a.y)*e);c.setAttribute("r",4/cam.s);
+    if(t<1)requestAnimationFrame(st);else{c.remove();cb&&cb()}};requestAnimationFrame(st);
+}
+function relate(o){
+  gH.innerHTML="";
+  if(!o||!o.used){I.forEach(x=>x.el.classList.remove("dim"));return}
+  I.forEach(x=>x.el.classList.toggle("dim",!(x===o||o.used.includes(x.id))));
+  o.used.forEach(id=>{const s=get(id),l=document.createElementNS(NS,"line");l.setAttribute("class","hintline");
+    l.setAttribute("x1",o.x);l.setAttribute("y1",o.y);l.setAttribute("x2",s.x);l.setAttribute("y2",s.y);gH.append(l)});
+}
+
+/* ---------- depth and placement ---------- */
+let cam={s:1,x:0,y:0},anim=null;
+const MID=1.5,NEAR=2.9,baseTier=s=>s>=NEAR?2:s>=MID?1:0;
+const FRESH=10000,GAP=14,BP=["ne","nw","se","sw"];
+const scr=o=>({x:o.x*cam.s+cam.x,y:o.y*cam.s+cam.y});
+function bubRect(p,pl,w,h){const x=pl[1]==="e"?p.x-4:p.x+4-w,y=pl[0]==="s"?p.y+24:p.y-22-h;return{x,y,w,h}}
+function labRect(p,pl,w,h){return{x:pl==="e"?p.x+16:p.x-16-w,y:p.y-10,w,h}}
+/* gap: bubbles keep 14 px from everything; a one-line name needs only 4 px */
+function overlap(a,b,gap=GAP){const ox=Math.min(a.x+a.w,b.x+b.w)+gap-Math.max(a.x,b.x),oy=Math.min(a.y+a.h,b.y+b.h)+gap-Math.max(a.y,b.y);return ox>0&&oy>0?ox*oy:0}
+/* Layout is a pure function of positions, frames, camera, attention and sticky choices (ADR-0012).
+   It runs on change only and never alters geometry. */
+function layout(){
+  const base=baseTier(cam.s),now=performance.now(),W=lens.clientWidth,H=lens.clientHeight;
+  const att=o=>o.id===replyId?3:(o.id===hoverId||o.id===focusId||o.id===openId)?2:(o.ev&&now-o.ev<FRESH)?1:0;
+  const rank=o=>-(att(o)*10+(attention(o)?3:o.st==="work"?2:o.k!=="session"?1:0));
+  const order=[...I].sort((a,b)=>rank(a)-rank(b)||(a.id<b.id?-1:1));
+  const lr=lens.getBoundingClientRect(),rel=el=>{const r=el.getBoundingClientRect();return{x:r.left-lr.left,y:r.top-lr.top,w:r.width,h:r.height}};
+  /* Order: (1) what you are working with, (2) edge hints around it, (3) everything else around both.
+     The minimap tucks itself away when (1) needs its corner, instead of the board moving. */
+  const miniFull={x:14,y:H-14-112,w:190,h:112};
+  $("mini").classList.remove("tuck");
+  const chrome=[document.querySelector(".scale"),$("ear")].filter(e=>e&&!e.hidden&&e.offsetWidth).map(rel);
+  const boxes=[...document.querySelectorAll(".isname span")].map(r=>({...rel(r),name:1})).concat(chrome.map(c=>({...c,chrome:1})));
+  /* frame of each item in screen space; text must stay inside it */
+  const fs=k=>{const f=FR[k];return{x:f.x*cam.s+cam.x,y:f.y*cam.s+cam.y,w:f.w*cam.s,h:f.h*cam.s}};
+  const inside=(r,f,m=8)=>r.x>=f.x+m&&r.y>=f.y+m&&r.x+r.w<=f.x+f.w-m&&r.y+r.h<=f.y+f.h-m;
+  const dots=I.map(o=>{const p=scr(o);return{o,r:{x:p.x-10,y:p.y-10,w:20,h:20}}});
+  /* links as rows of small boxes, so bubbles keep clear of lines too */
+  const linkPts=[];L.forEach(k=>{const a=scr(get(k.a)),b=scr(get(k.b)),d=Math.hypot(b.x-a.x,b.y-a.y),n=Math.max(1,Math.floor(d/12));
+    for(let i=2;i<n-1;i++){const t=i/n;linkPts.push({x:a.x+(b.x-a.x)*t-2,y:a.y+(b.y-a.y)*t-2,w:4,h:4})}});
+  /* labels (noNames) may cross thin link lines: they carry a halo in island colour; bubbles must keep clear of lines */
+  const costOf=(r,o,noNames)=>{const g=noNames?4:GAP;let c=0;boxes.forEach(b=>{if(!(noNames&&b.name))c+=overlap(r,b,g)});dots.forEach(d=>{if(d.o!==o)c+=overlap(r,d.r,g)*4});
+    if(!noNames)linkPts.forEach(q=>{if(q.x+q.w>r.x&&q.x<r.x+r.w&&q.y+q.h>r.y&&q.y<r.y+r.h)c+=60});
+    return c+Math.max(0,-r.x)*r.h+Math.max(0,r.x+r.w-W)*r.h+Math.max(0,-r.y)*r.w+Math.max(0,r.y+r.h-H)*r.w};
+  /* documents and memory speak only when something in them changed, then they show the change */
+  const hasBub=(o,t)=>t==="r"?true:o.k==="session"?(+t>=1&&(o.st!=="rest"||+t>=2)):+t>=2||(!!o.news&&+t>=1);
+  /* a fresh change in a document or memory keeps at least its name with a "neu" mark, even when the bubble finds no room */
+  const hasLab=(o,t)=>t!=="0"||!!attention(o)||!!o.news;
+  const fits=r=>r.x>=8&&r.y>=8&&r.x+r.w<=W-8&&r.y+r.h<=H-8;
+  const place=o=>{
+    const a=att(o),p=scr(o),bub=o.el.querySelector(".bub"),lab=o.el.querySelector(".lab");
+    if(a<2)o.lock=null;
+    bub.style.maxHeight="";
+    o.el.classList.toggle("fresh",!!o.ev&&now-o.ev<3200);o.el.classList.toggle("prio",a>=2);
+    const want=a===3?"r":String(Math.min(3,base+(a?1:0)));
+    const tiersToTry=want==="r"||a?[want]:[...Array(+want+1).keys()].reverse().map(String);
+    const off=p.x<-400||p.x>W+400||p.y<-400||p.y>H+400;
+    let pick=null;
+    const wasSb=o.el.classList.contains("sb"),prevT=o._shownT;
+    const forced=a>=2;
+    const tiers2=forced?[want]:tiersToTry;
+    for(const t of tiers2){
+      o.el.dataset.t=t;
+      if(!hasBub(o,t)||off){pick={t};break}
+      const w=bub.offsetWidth,h=bub.offsetHeight,fr=fs(o.ws);
+      let best=null;
+      if(forced){
+        /* The corner is chosen once when your attention arrives (keeping the visible one) and then locked:
+           hovering, clicking and typing never move the bubble. Only if it would leave the screen does it flip vertically. */
+        if(!o.lock)o.lock=wasSb&&o.bp?o.bp:null;
+        if(o.lock){let r=bubRect(p,o.lock,w,h);best={pl:o.lock,r,c:0};
+          if(!fits(r)){
+            /* first shorten the conversation inside the bubble (it scrolls), so the bubble stays put; flip only if too little room is left */
+            const avail=Math.floor(o.lock[0]==="s"?H-8-(p.y+24):p.y-22-8);
+            if(avail>=170){bub.style.maxHeight=avail+"px";const h2=Math.min(h,bub.offsetHeight);r=bubRect(p,o.lock,w,h2);best={pl:o.lock,r,c:0}}
+            else{const v=(o.lock[0]==="n"?"s":"n")+o.lock[1],rf=bubRect(p,v,w,h);if(fits(rf))best={pl:v,r:rf,c:0}}
+            /* still off screen sideways: flip east/west, then both */
+            if(!fits(best.r)){const hz=o.lock[0]+(o.lock[1]==="e"?"w":"e"),both=(o.lock[0]==="n"?"s":"n")+hz[1];
+              for(const pl of [hz,both]){const r2=bubRect(p,pl,w,bub.offsetHeight);if(fits(r2)){best={pl,r:r2,c:0};break}}}}}
+        else{for(const pl of [...new Set([o.bp||"ne",...BP])]){const r=bubRect(p,pl,w,h),c=costOf(r,o)+(inside(r,fr)?0:5000)+(fits(r)?0:1e5);if(!best||c<best.c)best={pl,r,c}}}
+        o.lock=best.pl;pick={t,...best};break;
+      }
+      for(const pl of [...new Set([o.bp||"ne",...BP])]){const r=bubRect(p,pl,w,h),c=costOf(r,o)+(inside(r,fr)?0:1e6);if(!best||c<best.c)best={pl,r,c};if(c===0)break}
+      if(best.c===0){pick={t,...best};break}
+    }
+    if(!pick)pick={t:"0"};
+    const show=!off&&hasBub(o,pick.t);
+    o.el.dataset.t=pick.t;o.el.classList.toggle("sb",show);
+    if(show){o._shownT=pick.t;o.bp=pick.pl;bub.dataset.p=pick.pl;boxes.push(pick.r);
+      /* only if a reply bubble cannot fit on screen in either vertical direction does the board move */
+      if(o.id===replyId&&!anim&&!fits(pick.r))keepClear(pick.r,W,H)}
+    else if((wasSb||o.el.classList.contains("hiding"))&&prevT){o.el.dataset.t=prevT;
+      /* keep the old content while the bubble fades out, then drop to the new depth */
+      if(!o.el.classList.contains("hiding")){o.el.classList.add("hiding");
+        o._ht=setTimeout(()=>{o.el.classList.remove("hiding");if(!o.el.classList.contains("sb"))o._shownT=null;relayout()},520)}}
+    /* the name follows the zoom level (and attention), not the bubble: a bubble without room must not take the name with it */
+    /* Names like on a map: every element tries to show its name at every zoom level. Items are placed in priority order
+       (attention first), so in a conflict the more important one keeps its name and the other one goes without. */
+    const t=pick.t,wantLab=!off;
+    lab.style.maxWidth="";
+    let labOk=false;
+    if(wantLab){
+      /* The label takes the side with room inside its frame. It is truncated to the space left, or hidden below 70 px.
+         It only switches side when the other side is clearly better, so it never flips back and forth. */
+      const fr=fs(o.ws),full=lab.scrollWidth,h=lab.offsetHeight;
+      const room=pl=>pl==="e"?fr.x+fr.w-10-(p.x+16):p.x-16-(fr.x+10);
+      const underChrome=r=>chrome.some(c=>r.x<c.x+c.w&&c.x<r.x+r.w&&r.y<c.y+c.h&&c.y<r.y+r.h);
+      /* c: real overlap only. Truncation is allowed and only decides which side is nicer (more of the name visible). */
+      const opt=pl=>{const w=Math.min(full,room(pl));const r=labRect(p,pl,Math.max(w,0),h);return{pl,w,r,c:w<Math.min(70,full)||underChrome(r)?1e9:costOf(r,o,true)}};
+      const cur=opt(o.lp||"e"),oth=opt((o.lp||"e")==="e"?"w":"e");
+      /* switch sides only if the other side is free while this one is not, or both are free and the other shows clearly more */
+      const better=(x,y)=>x.c===0&&(y.c>0||x.w>y.w+24);
+      let best=(a>=2&&o.lp)?cur:better(oth,cur)?oth:cur.c<=oth.c?cur:oth;
+      if(a>=2&&best.c>=1e9)best={...best,w:full,r:labRect(p,best.pl,full,h),c:0};
+      if(best.c<1e9&&(best.c===0||a||attention(o))){labOk=true;o.lp=best.pl;lab.dataset.p=best.pl;if(best.w<full)lab.style.maxWidth=best.w+"px";boxes.push(best.r)}
+    }
+    o.el.classList.toggle("sl",labOk);
+    o._t=t;
+  };
+  const isForced=o=>att(o)>=2;
+  order.filter(isForced).forEach(place);
+  /* the minimap gives way to what you are working with */
+  const ov2=(a,b)=>a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h;
+  const forcedRects=I.filter(isForced).flatMap(o=>[o.el.classList.contains("sb")&&rel(o.el.querySelector(".bub")),o.el.classList.contains("sl")&&rel(o.el.querySelector(".lab"))].filter(Boolean));
+  if(forcedRects.some(r=>ov2(r,miniFull)))$("mini").classList.add("tuck");
+  const miniR=rel($("mini"));
+  /* edge hints keep clear of the minimap, of what you are working with and of all dots */
+  edges([miniR,...forcedRects,...dots.map(d=>d.r)]);
+  [miniR,...[...edgeBox.children].map(rel)].forEach(c=>{chrome.push(c);boxes.push({...c,chrome:1})});
+  order.filter(o=>!isForced(o)).forEach(place);
+  gL.querySelectorAll(".lk").forEach(g=>{const A=get(g.dataset.a),B=get(g.dataset.b);g.classList.toggle("hot",[A,B].some(x=>x.id===hoverId||x.id===focusId||x.id===replyId||x.id===openId))});
+  mini();markActive();
+}
+function keepClear(r,W,H){
+  let dx=0,dy=0;const m=12;
+  if(r.x+dx<m)dx=m-r.x;if(r.x+r.w+dx>W-m)dx=W-m-r.x-r.w;if(r.y+dy<m)dy=m-r.y;if(r.y+r.h+dy>H-m)dy=H-m-r.y-r.h;
+  if(Math.abs(dx)>1||Math.abs(dy)>1)fly({s:cam.s,x:cam.x+dx,y:cam.y+dy});
+}
+let lq=0;const relayout=()=>{if(!lq)lq=requestAnimationFrame(()=>{lq=0;layout()})};
+
+/* ---------- edge hints: placed inside the board area, stacked so they never overlap each other ---------- */
+const edgeBox=$("edges");
+function edges(avoid=[]){
+  const W=lens.clientWidth,H=lens.clientHeight,cx=W/2,cy=H/2,m=14;edgeBox.innerHTML="";
+  const list=[];
+  I.forEach(o=>{const why=attention(o);if(!why||o.id===openId)return;const p=scr(o);if(p.x>12&&p.x<W-12&&p.y>12&&p.y<H-12)return;
+    const e=document.createElement("button");e.className="edge";
+    const dx=p.x-cx,dy=p.y-cy,ang=Math.atan2(dy,dx);
+    e.innerHTML=`<i style="transform:rotate(${ang}rad)"></i><span><b>${o.ws}</b> ${esc(cut(o.t,22))} · ${why}</span>`;
+    /* act on pointerdown: the board's own pointer handling (pan) and relayouts must not swallow the click */
+    e.addEventListener("pointerdown",ev=>{ev.stopPropagation();ev.preventDefault();focusItem(o,false);flyTo(o)});
+    e.addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.stopPropagation();focusItem(o,false);flyTo(o)}});edgeBox.append(e);
+    const w=e.offsetWidth,h=e.offsetHeight,s=Math.min((W/2-m-w/2)/Math.abs(dx||1e-6),(H/2-m-h/2)/Math.abs(dy||1e-6));
+    list.push({e,x:cx+dx*s,y:cy+dy*s,w,h})});
+  /* Each hint slides along its edge, alternating away from its ideal spot, to the nearest place that is free of
+     other hints and of everything in `avoid`. With no free place it is dropped; the minimap still shows the item. */
+  const placed=[],pad=8;
+  const hit=(x,y,w,h)=>{const r={x:x-w/2-pad,y:y-h/2-pad,w:w+2*pad,h:h+2*pad};
+    return placed.some(q=>r.x<q.x+q.w/2&&q.x-q.w/2<r.x+r.w&&r.y<q.y+q.h/2&&q.y-q.h/2<r.y+r.h)||avoid.some(a=>r.x<a.x+a.w&&a.x<r.x+r.w&&r.y<a.y+a.h&&a.y<r.y+r.h)};
+  list.sort((a,b)=>a.y-b.y||a.x-b.x).forEach(h=>{
+    h.x=Math.max(m+h.w/2,Math.min(W-m-h.w/2,h.x));h.y=Math.max(m+h.h/2,Math.min(H-m-h.h/2,h.y));
+    const vertical=h.x<=m+h.w/2+1||h.x>=W-m-h.w/2-1,step=vertical?h.h+6:24;
+    let spot=null;
+    for(let i=0;i<60&&!spot;i++){const d=(i%2?-1:1)*Math.ceil(i/2)*step,x=vertical?h.x:h.x+d,y=vertical?h.y+d:h.y;
+      if(x<m+h.w/2||x>W-m-h.w/2||y<m+h.h/2||y>H-m-h.h/2)continue;if(!hit(x,y,h.w,h.h))spot={x,y}}
+    if(!spot){h.e.remove();return}
+    h.x=spot.x;h.y=spot.y;h.e.style.left=h.x+"px";h.e.style.top=h.y+"px";placed.push(h)});
+}
+
+/* ---------- minimap ---------- */
+const mc=$("miniC");
+function miniBounds(){const H=hulls();let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;Object.values(H).forEach(h=>{x1=Math.min(x1,h.x1);y1=Math.min(y1,h.y1);x2=Math.max(x2,h.x2);y2=Math.max(y2,h.y2)});
+  const pad=40;return{x1:x1-pad,y1:y1-pad,x2:x2+pad,y2:y2+pad,H}}
+function mini(){
+  const d=devicePixelRatio,w=mc.clientWidth,h=mc.clientHeight;if(mc.width!==w*d){mc.width=w*d;mc.height=h*d}
+  const g=mc.getContext("2d");g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);
+  const B=miniBounds(),s=Math.min(w/(B.x2-B.x1),h/(B.y2-B.y1)),ox=(w-(B.x2-B.x1)*s)/2,oy=(h-(B.y2-B.y1)*s)/2;
+  const X=x=>ox+(x-B.x1)*s,Y=y=>oy+(y-B.y1)*s,css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  Object.entries(B.H).forEach(([k,hh])=>{g.fillStyle=css("--island");g.beginPath();g.roundRect(X(hh.x1),Y(hh.y1),(hh.x2-hh.x1)*s,(hh.y2-hh.y1)*s,6);g.fill();
+    g.fillStyle=css("--ink-soft");g.font="9px "+css("--sans");g.fillText(k,X(hh.x1)+5,Y(hh.y1)+11)});
+  I.forEach(o=>{const a=attention(o);g.beginPath();g.arc(X(o.x),Y(o.y),a?2.6:1.5,0,7);g.fillStyle=a?css("--signal"):css("--ink-faint");g.fill()});
+  const vx1=(0-cam.x)/cam.s,vy1=(0-cam.y)/cam.s,vx2=(lens.clientWidth-cam.x)/cam.s,vy2=(lens.clientHeight-cam.y)/cam.s;
+  g.strokeStyle=css("--ink");g.lineWidth=1;g.strokeRect(X(vx1),Y(vy1),(vx2-vx1)*s,(vy2-vy1)*s);
+  mc._m={B,s,ox,oy};
+}
+/* Minimap: press and drag the frame to move the view, like a game map. A press outside the frame centres the view there,
+   and the drag continues from that point. When tucked away, a click unfolds it. */
+let miniDrag=null;
+const miniWorld=e=>{const r=mc.getBoundingClientRect(),m=mc._m;return{x:m.B.x1+(e.clientX-r.left-m.ox)/m.s,y:m.B.y1+(e.clientY-r.top-m.oy)/m.s}};
+$("mini").addEventListener("pointerdown",e=>{
+  /* reaching for the tucked map means you are done with the bubble: close it and the map unfolds */
+  if($("mini").classList.contains("tuck")){hoverId=null;focusId=null;endReply();layout();return}
+  if(!mc._m)return;e.preventDefault();$("mini").setPointerCapture(e.pointerId);cancelAnimationFrame(anim);
+  const p=miniWorld(e),W=lens.clientWidth,H=lens.clientHeight,vx=(W/2-cam.x)/cam.s,vy=(H/2-cam.y)/cam.s;
+  const hw=W/2/cam.s,hh=H/2/cam.s,inView=Math.abs(p.x-vx)<hw&&Math.abs(p.y-vy)<hh;
+  miniDrag=inView?{ox:p.x-vx,oy:p.y-vy}:{ox:0,oy:0};
+  cam.x=W/2-(p.x-miniDrag.ox)*cam.s;cam.y=H/2-(p.y-miniDrag.oy)*cam.s;apply()});
+$("mini").addEventListener("pointermove",e=>{if(!miniDrag)return;const p=miniWorld(e),W=lens.clientWidth,H=lens.clientHeight;
+  cam.x=W/2-(p.x-miniDrag.ox)*cam.s;cam.y=H/2-(p.y-miniDrag.oy)*cam.s;apply()});
+$("mini").addEventListener("pointerup",()=>{miniDrag=null});
+
+/* ---------- menus ---------- */
+let ov=null;
+function dropOv(){if(ov){ov.remove();ov=null}}
+function place(el,x,y){app.append(el);const w=el.offsetWidth,h=el.offsetHeight,Wd=lens.clientWidth,Hd=lens.clientHeight;
+  el.style.left=Math.max(8,Math.min(x,Wd-w-8))+"px";el.style.top=(y+h>Hd-8?Math.max(8,y-h-30):y)+"px"}
+function menu(html,x,y,on){
+  dropOv();const el=document.createElement("div");el.className="ov menu";el.innerHTML=html;
+  el.addEventListener("click",ev=>{const b=ev.target.closest("button");if(b)on(b.dataset.t)});
+  el.addEventListener("keydown",ev=>{const bs=[...el.querySelectorAll("button")],i=bs.indexOf(document.activeElement);
+    if(ev.key==="ArrowDown"){ev.preventDefault();bs[(i+1)%bs.length].focus()}
+    else if(ev.key==="ArrowUp"){ev.preventDefault();bs[(i-1+bs.length)%bs.length].focus()}
+    ev.stopPropagation();if(ev.key==="Escape"){dropOv();lens.focus()}});
+  place(el,x,y);ov=el;el.querySelector("button").focus();
+}
+function typeMenu(a,b,x,y){
+  menu(`<div class="q">Wie hängen sie zusammen?</div>`+Object.entries(TYPES).map(([t,v])=>`<button data-t="${t}">${lineGlyph(t)}${v.l}</button>`).join(""),x,y,
+    t=>{L.push({a:a.id,b:b.id,ty:t});drawLinks();render(a);render(b);save();dropOv();focusItem(a)});
+}
+function linkMenu(i,x,y){
+  const k=L[i];
+  menu(`<div class="q">${esc(cut(get(k.a).t,22))} → ${esc(cut(get(k.b).t,22))}</div>`+
+    Object.entries(TYPES).map(([t,v])=>`<button data-t="${t}" class="${t===k.ty?"on":""}">${lineGlyph(t)}${v.l}</button>`).join("")+
+    `<div class="sep"></div><button data-t="flip">Richtung umkehren</button><button data-t="del">Verbindung lösen</button>`,x+8,y+8,
+    t=>{const a=get(k.a),b=get(k.b);if(t==="del")L.splice(i,1);else if(t==="flip")[k.a,k.b]=[k.b,k.a];else k.ty=t;drawLinks();render(a);render(b);save();dropOv();relayout()});
+}
+
+/* ---------- reply in the bubble ---------- */
+function startReply(o){if(o.st==="done"){o.st="rest"}replyId=o.id;render(o);layout();o.el.querySelector(".reply textarea")?.focus({preventScroll:true});ensureVisible(o)}
+function endReply(){const o=replyId&&get(replyId);if(listening)toggleListen();replyId=null;
+  /* a new session you leave without writing anything is discarded */
+  if(o&&o.draft&&!o.log.length&&!o.el.querySelector(".reply textarea")?.value.trim()){const i=I.indexOf(o);if(i>=0)I.splice(i,1);o.el.remove();if(focusId===o.id)focusId=null;relayout();return}
+  if(o){render(o);relayout()}}
+function bindReply(ta,o){
+  ta.addEventListener("pointerdown",e=>e.stopPropagation());
+  ta.addEventListener("keydown",e=>{e.stopPropagation();
+    if(e.key==="Escape"){endReply();focusItem(o)}
+    else if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&pendingAsk(o)){e.preventDefault();decide(o,true)}
+    else if(e.key==="Enter"&&!e.shiftKey&&ta.value.trim()){e.preventDefault();
+      /* a new agent: Enter in the role field moves on to the trigger field */
+      if(o.draft&&o.agent){o.el.querySelector(".trig-in")?.focus();return}
+      if(listening)toggleListen();const v=ta.value.trim();ta.value="";send(o,v)}});
+}
+function bindTrigger(inp,o){
+  inp.addEventListener("pointerdown",e=>e.stopPropagation());
+  inp.addEventListener("keydown",e=>{e.stopPropagation();
+    if(e.key==="Escape"){endReply();focusItem(o)}
+    if(e.key==="Enter"){e.preventDefault();const role=o.el.querySelector(".reply textarea").value.trim();if(!role){o.el.querySelector(".reply textarea").focus();return}createAgent(o,role)}});
+}
+/* Trigger text → rule. In the real board an LLM call turns free text into a structured trigger and Orbit shows its reading
+   for confirmation; here a few patterns stand in for it. Anything not understood is kept as "von Hand" and says so. */
+function parseTrigger(t){
+  t=(t||"").trim();const low=t.toLowerCase();
+  if(!t)return{kind:"manual",label:"nur von Hand"};
+  if(/merge/.test(low))return{kind:"event",ev:"pr.merged",label:"nach jedem Merge in main"};
+  if(/(neue[nrm]?|new|geöffnet|opened).{0,12}pr|pr.{0,12}(geöffnet|opened|neu)/.test(low))return{kind:"event",ev:"pr.opened",label:"bei jedem neuen PR"};
+  if(/\bci\b|rot|fail/.test(low))return{kind:"event",ev:"ci.failed",label:"wenn CI rot ist"};
+  const h=low.match(/(\d{1,2})(?::(\d{2}))?\s*(uhr|h\b)?/);if(h&&/(uhr|täglich|werktag|morgen|abend|\d:\d)/.test(low)){
+    const days=/werktag/.test(low)?"werktags":"täglich";return{kind:"schedule",label:`${days} um ${h[1]}:${h[2]||"00"} Uhr`}}
+  return{kind:"manual",label:"nur von Hand",unclear:t};
+}
+function createAgent(o,role){
+  const inp=o.el.querySelector(".trig-in"),tr=parseTrigger(inp?inp.value:"");
+  o.draft=false;o.role=role;o.t=cut(role.replace(/\s+/g," "),40);o.trigger=tr.label;o.trig=tr;
+  o.log.push(["you",role+(inp&&inp.value.trim()?` (Auslöser: ${inp.value.trim()})`:""),0]);
+  o.log.push(["ai",tr.unclear?`Den Auslöser „${tr.unclear}“ habe ich nicht verstanden. Ich laufe vorerst nur von Hand, du kannst ihn im Detailfenster ändern.`:`Angelegt. Ich laufe ${tr.label}.`,0]);
+  o.st=tr.unclear?"wait":"rest";replyId=null;touch(o);save();
+}
+/* Camera rules (ADR-0012, "Camera"):
+   - Zoom changes only through explicit zoom input: pinch, ⌘/Ctrl + wheel, + and −, the zoom dots, G (show island).
+   - The view pans only when an element you act on would otherwise be out of sight, and then only as far as needed.
+   - Nothing pans for hover, selection, replying, opening or closing the sidebar, new sessions inside the visible area. */
+function reveal(o,m){const p=scr(o),W=lens.clientWidth,H=lens.clientHeight,mx=Math.min(m,W/3),my=Math.min(m,H/3);
+  const dx=p.x<mx?mx-p.x:p.x>W-mx?W-mx-p.x:0,dy=p.y<my?my-p.y:p.y>H-my?H-my-p.y:0;if(dx||dy)fly({s:cam.s,x:cam.x+dx,y:cam.y+dy})}
+/* keep a dot just inside the view (keyboard focus, replying) */
+const ensureVisible=o=>reveal(o,48);
+/* explicit navigation to an element (edge hint, W, voice routing, new session out of view): same zoom, enough room around it */
+const flyTo=o=>reveal(o,130);
+
+/* ---------- voice (simulated recognition) ---------- */
+const VOICE={
+  s1:["Okay, dann bitte noch","einen Test für den","cache invalidation","Fall, wenn sich die","mtime","ändert, but the size stays the same."],
+  s5:["Ja, run the migration,","aber vorher bitte ein","Backup","von der","pipeline","Tabelle machen."],
+  s7:["Passt. Mach danach bitte","einen","PR","auf","main","und schreib kurz rein, warum der Cache vorher falsch war."],
+  s4:["Please check","014_merge.sql","nochmal, ich glaube","die Spalte","stage","braucht einen Default."]};
+/* one global listener: ⌥Space or M toggles it. Text goes to whatever has focus; with nothing in focus the first words name the target. */
+let listening=null;
+function voiceTarget(){
+  if(openId&&get(openId).k==="session"&&get(openId).own!=="obs")return{o:get(openId),ta:()=>$("pCompose").querySelector("textarea")};
+  const id=replyId||focusId||hoverId;const o=id&&get(id);
+  if(o&&o.k==="session"&&o.own!=="obs"){if(replyId!==o.id)startReply(o);return{o,ta:()=>o.el.querySelector(".reply textarea")}}
+  return null;
+}
+function toggleListen(){
+  if(listening){clearInterval(listening.t);const ta=listening.ta();listening=null;$("ear").hidden=true;ta?.focus();return}
+  let tg=voiceTarget(),routed=false;
+  if(!tg){const o=get("s5");routed=true;focusItem(o,false);flyTo(o);startReply(o);tg={o,ta:()=>o.el.querySelector(".reply textarea")}}
+  $("ear").hidden=false;$("earTo").textContent=routed?"„An Pipeline …“":"→ "+cut(tg.o.t,32);
+  const words=(routed?["An Pipeline:"]:[]).concat(VOICE[tg.o.id]||["Bitte mach weiter","und sag mir Bescheid,","wenn die Tests grün sind."]);
+  let i=0;const target=tg;
+  if(routed)setTimeout(()=>{$("earTo").textContent="→ "+cut(target.o.t,32)},900);
+  listening={ta:target.ta,t:setInterval(()=>{const ta=target.ta();if(!ta)return;if(i>=words.length){toggleListen();return}
+    if(routed&&i===0){i++;return}ta.value=(ta.value+" "+words[i++]).trim();ta.scrollTop=ta.scrollHeight},520)};
+}
+document.addEventListener("keydown",e=>{if(e.altKey&&e.code==="Space"){e.preventDefault();e.stopPropagation();toggleListen()}},true);
+
+/* ---------- simulated sessions ---------- */
+const CANNED={s1:"Test ist ergänzt und grün, auch für den Fall gleicher Größe.",s2:"Gut, dann erscheinen auch fertige Sessions am Rand.",s3:"Ich prüfe das noch einmal mit gestopptem Server.",s4:"Ich habe einen Default für stage ergänzt und den Kommentar im PR aktualisiert.",s5:"Backup liegt unter backups/pipeline.sql, Migration ist durch.",s6:"Ich erstelle den Export neu.",s7:"PR #33 ist offen, mit Erklärung zum Cache.",a1:"Verstanden, das berücksichtige ich ab dem nächsten Lauf.",a2:"Gut, ich schreibe es der Session direkt und merke mir das für künftige Reviews."};
+const AMBIENT={s1:["Bearbeitet: test/core.test.ts","bun test · 23 grün"],s4:["Bearbeitet: migrations/014_merge.sql","bun test · 13 grün, 1 rot"],s7:["Bearbeitet: src/onboarding/state.ts","bun test · 41 grün"]};
+/* an event lifts the item for FRESH ms; the layout runs again exactly when that ends, no polling */
+function touch(o){
+  /* something new from the session ends "Später" */
+  if(o.snoozed&&o.log.length>o.snoozeLen&&/^(ai|ask|agent)$/.test(o.log.at(-1)[0]))o.snoozed=false;
+  o.ev=performance.now();render(o);if(openId===o.id)open(o,true);relayout();setTimeout(relayout,3300);setTimeout(relayout,FRESH+60)}
+function send(o,text,html){
+  /* the first prompt of a new session names it until Claude Code provides a topic title */
+  if(o.draft&&o.agent){createAgent(o,text);return}
+  if(o.draft){o.draft=false;o.t=cut(text.replace(/\s+/g," "),42);
+    /* a worktree session gets a branch named after its first prompt */
+    if(o.wt==="worktree"){const slug=text.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,28)||"neu";o.br="feat/"+slug;o.wtPath=".worktrees/"+slug;
+      o.log.push(["tool",`git worktree add ${o.wtPath} -b ${o.br}`,0])}CANNED[o.id]="Verstanden, ich fange an und melde mich, wenn ich etwas von dir brauche."}
+  o.log.push(["you",text,0,html||null]);o.st="work";o.ago=0;o.now=o.own==="remote"?"Kommentar auf GitHub gesendet":"Denkt nach …";touch(o);
+  setTimeout(()=>{const s="Gelesen: "+({orbit:"src/server.ts",kestrel:"src/pipeline.ts",meridian:"src/onboarding/state.ts"}[o.ws]);o.log.push(["tool",s,0]);o.now=s;touch(o)},1000);
+  setTimeout(()=>{o.log.push(["ai",CANNED[o.id],0]);o.st="wait";o.now="";touch(o);handoff(o)},2600);
+}
+function decide(o,ok){
+  const m=pendingAsk(o);if(!m||o.own!=="own")return;o.log.splice(o.log.length-1,1,["tool",(ok?"Ausgeführt: ":"Abgelehnt: ")+m[2],0]);
+  o.st="work";o.ago=0;o.now=ok?"Führt "+m[2]+" aus":"Sucht einen anderen Weg";touch(o);
+  setTimeout(()=>{o.log.push(["ai",ok?"Migration ist durch, die Pipeline ist jetzt nach Stufe gruppiert.":"Ich löse es ohne Migration.",0]);o.st="wait";o.now="";touch(o);handoff(o)},2200);
+}
+function handoff(o){
+  L.forEach(k=>{if(k.ty!=="hands"||k.a!==o.id)return;const to=get(k.b),text=lastSaid(o);
+    pulse(k,()=>{k.last=text;to.log.push(["agent",o.t,text,0,"in"]);o.log.push(["agent",to.t,text,0,"out"]);render(o);touch(to)})});
+}
+/* a session writes to memory: the memory gets the line and speaks for as long as the change is fresh */
+function memoryNote(sid,mid,text){
+  const m=get(mid),s=get(sid);
+  setMd(m,m.md.replace(/\s*$/,"")+`\n- ${text}`);if(!m.used.includes(sid))m.used.push(sid);
+  m.news={from:s.t,text};s.log.push(["tool","Gedächtnis ergänzt",0]);render(s);touch(m);if(openId===s.id)open(s,true);
+  clearTimeout(m._nt);m._nt=setTimeout(()=>{m.news=null;render(m);relayout()},FRESH+700);
+}
+/* An agent run: the agent works, then its result shows where it changed something (here: the roadmap document). */
+function agentRun(a,why,pr){
+  if(a.st==="work")return;
+  a.st="work";a.ago=0;a.now=pr?`Trägt PR #${pr.n} ein`:"Prüft den Stand";a.log.push(["tool",`Lauf gestartet: ${why}`,0]);touch(a);
+  setTimeout(()=>{a.log.push(["tool","Bearbeitet: README.md",0]);a.now="Bearbeitet README.md";touch(a)},1400);
+  setTimeout(()=>{const line=pr?`PR #${pr.n} (${pr.title}) unter Stufe 2 eingetragen.`:"Roadmap geprüft, nichts zu ergänzen.";
+    a.runs.unshift({t:pr?`PR #${pr.n} eingetragen`:"Roadmap geprüft",ago:0});a.log.push(["ai",line,0]);a.st="rest";a.now="";touch(a);
+    if(pr&&get("d1")){const d=get("d1");setMd(d,d.md.replace(/(### Stufe 2\n)/,`$1- ${pr.title} (PR #${pr.n})\n`));
+      d.news={from:a.t,text:`${pr.title} (PR #${pr.n}) unter Stufe 2`};touch(d);clearTimeout(d._nt);d._nt=setTimeout(()=>{d.news=null;render(d);relayout()},FRESH+700)}},3200);
+}
+/* trigger: after every merge into main, the roadmap agent runs */
+function onMerged(o){const a=get("a1");if(a&&o.pr)setTimeout(()=>agentRun(a,`Merge von PR #${o.pr.n}`,{n:o.pr.n,title:o.t}),600)}
+setTimeout(()=>memoryNote("s1","m1","Transcript-Cache: mtime und Größe sind der Schlüssel, nicht der Inhalt."),6000);
+setTimeout(()=>memoryNote("s2","m1","Board: keine Legenden, alles erschließt sich durch Hinsehen und Hovern."),30000);
+let amb=0;
+setInterval(()=>{const ws=I.filter(o=>o.st==="work"&&AMBIENT[o.id]&&o.id!==openId&&o.id!==replyId);if(!ws.length)return;const o=ws[amb++%ws.length];
+  const s=AMBIENT[o.id][(o._a=(o._a||0)+1)%AMBIENT[o.id].length];o.log.splice(o.log.length-1,0,["tool",s,0]);o.now=s;touch(o)},8000);
+
+/* bubble buttons */
+/* one action function for bubble and detail panel, so both can do the same */
+/* Ask the session to fix its own PR. With "und mergen" it merges by itself once CI is green:
+   that is your instruction to the session, not an automatic merge by Orbit (see ADR-0014). */
+function fixPr(o,thenMerge){
+  const p=o.pr;p.fixing=true;p.thenMerge=thenMerge;
+  o.log.push(["you",`PR #${p.n}: ${p.text}. Bitte beheben${thenMerge?" und danach per Squash-Merge in main mergen":""}.`,0]);
+  o.st="work";o.ago=0;o.now="Liest die CI-Logs";touch(o);
+  setTimeout(()=>{o.log.push(["tool","Bearbeitet: migrations/014_merge.sql",0]);o.now="bun test · 14 grün";touch(o)},1400);
+  setTimeout(()=>{p.fixing=false;
+    if(thenMerge){o.log.push(["tool",`gh pr merge ${p.n} --squash --delete-branch`,0]);o.pr={n:p.n,state:"merged",text:"von der Session gemergt"};o.log.push(["ai",`CI ist grün, PR #${p.n} ist in main.`,0]);onMerged(o)}
+    else{o.pr={n:p.n,state:"ready",text:"mergebar, CI grün"};o.log.push(["ai",`CI ist grün, PR #${p.n} ist mergebar.`,0])}
+    o.st="wait";o.now="";touch(o)},3600);
+}
+/* Take an element off the board (ADR-0005 archive). It fades out; "Rückgängig" or ⌘Z brings it back. */
+const archived=[];let lastUndo=null;
+function archive(o){
+  if(openId===o.id)close();if(replyId===o.id)endReply();if(focusId===o.id)focusId=null;
+  o.el.classList.add("gone");o.archivedAt=Date.now();archived.push(o);
+  setTimeout(()=>{const i=I.indexOf(o);if(i>=0)I.splice(i,1);o.el.remove();drawLinks();relayout();
+    /* a session with its own worktree: offer to remove the folder too, never automatically */
+    status.innerHTML=`„${esc(cut(o.t,30))}“ vom Board genommen<button id="undoArch">Rückgängig</button>`+(o.wt==="worktree"?`<button id="dropWt">Worktree auch entfernen</button>`:"");
+    if($("dropWt"))$("dropWt").onclick=()=>{o.wtRemoved=true;status.textContent=`Worktree ${o.wtPath} entfernt.`;lastUndo=null};
+    lastUndo=()=>unarchive(o);$("undoArch").onclick=()=>{const u=lastUndo;lastUndo=null;u&&u()};clearTimeout(status._t);status._t=setTimeout(()=>{status.innerHTML=""},8000)},360);
+}
+/* bring back the last one (⌘Z) or a chosen one (list in the island menu); it returns to its old place */
+function unarchive(o){if(!o)o=archived.at(-1);const i=archived.indexOf(o);if(i<0)return;archived.splice(i,1);
+  o.el.classList.remove("gone");I.push(o);world.append(o.el);render(o);drawLinks();relayout();status.innerHTML="";focusItem(o,false);flyTo(o)}
+/* sample: two sessions that were taken off the board days ago */
+[["x1","orbit",200,420,"Board-Polling auf SSE umstellen",4],["x2","orbit",420,260,"Hook-Installer idempotent machen",9],["x3","kestrel",760,300,"Seed-Daten für Organisationen",2]].forEach(([id,ws,x,y,t,days])=>{
+  const o={id,k:"session",ws,own:"own",x,y,t,st:"rest",ago:days*1440,br:"main",log:[["ai","Erledigt.",days*1440]]};render(o);o.el.remove();o.archivedAt=Date.now()-days*864e5;archived.push(o)});
+
+/* ---------- island menu ("+" beside the island name): everything you can add to or do with an island ---------- */
+const FILES={orbit:["CLAUDE.md","docs/architecture-debt.md","docs/adr/0012-frames-and-deterministic-layout.md","docs/adr/0015-agents.md"],
+  kestrel:["README.md","docs/pipeline.md"],meridian:["README.md","docs/evaluation.md"]};
+const SAMPLE_MD={"CLAUDE.md":"### Orbit — context for agents\nOrbit is a local control centre for Claude Code sessions.\n\n### Rules\n- Everything stays local.\n- Run `bun test` before every commit.",
+  "docs/architecture-debt.md":"### Architecture debt\n- SSE only signals changed\n- Lanes are not frames yet"};
+function islandMenu(k,x,y){
+  const arch=archived.filter(o=>o.ws===k),its=I.filter(o=>o.ws===k);
+  menu(`<div class="q">${esc(wsName(k))}</div>`+
+    `<button data-t="session">Neue Session<kbd>N</kbd></button><button data-t="agent">Neuer Agent</button><button data-t="file">Datei anheften …</button>`+
+    (arch.length?`<button data-t="arch">Vom Board genommen · ${arch.length} …</button>`:"")+
+    `<div class="sep"></div><button data-t="rename">Insel umbenennen</button><button data-t="remove">Insel entfernen …</button><button data-t="newisl">Neue Insel …</button>`,x,y,t=>{
+    dropOv();
+    if(t==="session")newSession(k);
+    else if(t==="agent")newSession(k,true);
+    else if(t==="file")fileMenu(k,x,y);
+    else if(t==="arch")archMenu(k,x,y);
+    else if(t==="rename")renameIsland(k);
+    /* a new island starts to the right of this one (or wherever there is room) */
+    else if(t==="newisl"){const f=FR[k];newIslandAt(f.x+f.w+FGAP+40,f.y+30,x,y)}
+    else if(t==="remove")removeIsland(k,x,y)});
+}
+function archMenu(k,x,y){
+  const arch=archived.filter(o=>o.ws===k).sort((a,b)=>b.archivedAt-a.archivedAt);
+  menu(`<div class="q">Vom Board genommen in ${esc(wsName(k))}</div>`+arch.map((o,i)=>`<button data-t="${i}">${esc(cut(o.t,40))}<kbd>${ago(Math.round((Date.now()-o.archivedAt)/6e4))}</kbd></button>`).join(""),x,y,
+    t=>{dropOv();unarchive(arch[+t])});
+}
+function fileMenu(k,x,y){
+  const pinned=new Set(I.filter(o=>o.k==="doc"&&o.ws===k).map(o=>o.src)),list=(FILES[k]||[]).filter(f=>!pinned.has(f));
+  menu(`<div class="q">Datei anheften · ${esc(wsName(k))}</div>`+(list.length?list.map((f,i)=>`<button data-t="${i}">${esc(f)}</button>`).join(""):`<div class="q">Alle Markdown-Dateien sind angeheftet.</div>`)+
+    `<div class="sep"></div><button data-t="new">Neue Datei …</button>`,x,y,t=>{dropOv();
+    const src=t==="new"?`notes/notiz-${Date.now()%1e4}.md`:list[+t];
+    const p=freeSpot(k),o={id:"f"+Date.now(),k:"doc",ws:k,x:p.x,y:p.y,t:src.split("/").pop().replace(/\.md$/,""),src,used:[]};
+    setMd(o,t==="new"?"":(SAMPLE_MD[src]||`### ${o.t}\nInhalt von ${src}.`));I.push(o);render(o);drawLinks();relayout();flyTo(o);if(t==="new")editDoc(o)});
+}
+function renameIsland(k){
+  const nm=islNames[k].querySelector(".nm");nm.contentEditable="true";nm.focus();
+  const r=document.createRange();r.selectNodeContents(nm);const s=getSelection();s.removeAllRanges();s.addRange(r);
+  const before=nm.textContent,done=save=>{nm.contentEditable="false";const v=nm.textContent.trim();if(save&&v)WSN[k]=v;nm.textContent=wsName(k);relayout();lens.focus()};
+  nm.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter"){e.preventDefault();done(true)}if(e.key==="Escape"){e.preventDefault();nm.textContent=before;done(false)}};
+  nm.onblur=()=>done(true);
+}
+/* An island is a workspace. It can only be removed when nothing of it is left on the board, so nothing gets lost silently. */
+function removeIsland(k,x,y){
+  const its=I.filter(o=>o.ws===k);
+  if(its.length){menu(`<div class="q">${esc(wsName(k))} enthält noch ${its.length} ${its.length>1?"Elemente":"Element"}. Nimm sie erst vom Board.</div><button data-t="ok">Verstanden</button>`,x,y,()=>dropOv());return}
+  menu(`<div class="q">Insel ${esc(wsName(k))} und ihren Workspace-Eintrag entfernen? Dateien und Sessions bleiben unangetastet.</div><button data-t="go">Entfernen</button><button data-t="no">Abbrechen</button>`,x,y,t=>{dropOv();if(t!=="go")return;
+    const keep={f:FR[k],name:WSN[k]};
+    delete FR[k];islNames[k].remove();grips[k].remove();delete islNames[k];delete grips[k];if(selWs===k)selWs=null;drawIslands();saveFrames();relayout();
+    /* same safety net as for elements: Rückgängig or ⌘Z brings the island back */
+    lastUndo=()=>{FR[k]=keep.f;if(keep.name)WSN[k]=keep.name;addIslandUI(k);drawIslands();saveFrames();relayout();status.innerHTML=""};
+    status.innerHTML=`Insel „${esc(keep.name||k)}“ entfernt<button id="undoIsl">Rückgängig</button>`;$("undoIsl").onclick=()=>{const u=lastUndo;lastUndo=null;u&&u()};
+    clearTimeout(status._t);status._t=setTimeout(()=>{status.innerHTML=""},8000)});
+}
+/* A new island: double-click on empty canvas outside all islands. Name and folder, then it exists. */
+function newIslandAt(wx,wy,sx,sy){
+  dropOv();const el=document.createElement("div");el.className="ov menu newisl";
+  el.innerHTML=`<div class="q">Neue Insel</div><input id="ni-name" placeholder="Name, z. B. kundenportal"><input id="ni-path" placeholder="Ordner, z. B. ~/Src/kundenportal">`;
+  place(el,sx,sy);ov=el;const [a,b]=el.querySelectorAll("input");a.focus();
+  el.addEventListener("keydown",e=>{e.stopPropagation();if(e.key==="Escape"){dropOv();lens.focus()}
+    if(e.key==="Enter"){e.preventDefault();if(e.target===a&&a.value.trim()){b.focus();return}
+      const name=a.value.trim();if(!name)return a.focus();
+      const k=name.toLowerCase().replace(/[^a-z0-9]+/g,"-");if(FR[k])return a.focus();
+      let f={x:wx-30,y:wy-30,w:380,h:300};for(let i=0;i<40&&!frameFree(k,f);i++)f={...f,x:f.x+40};
+      if(!frameFree(k,f)){status.textContent="Hier ist kein Platz für eine neue Insel.";return}
+      FR[k]=f;WSN[k]=name;REPO[k]="mbernath/"+k;FILES[k]=[];addIslandUI(k);drawIslands();saveFrames();dropOv();selWs=k;relayout();newSession(k)}});
+}
+/* model and worktree pickers: small menus at the button that opened them */
+function pickMenu(o,a,btn){
+  const r=btn.getBoundingClientRect(),ar=app.getBoundingClientRect(),x=r.left-ar.left,y=r.bottom-ar.top+6;
+  /* model and thinking effort in one menu; both apply from the next message */
+  if(a==="pick-model")menu(`<div class="q">Modell${o.draft?"":" ab der nächsten Nachricht"}</div>`+Object.entries(MODELS).map(([k,m])=>`<button data-t="m:${k}" class="${k===o.model?"on":""}">${m.n}<kbd>${m.d}</kbd></button>`).join("")+
+    `<div class="sep"></div><div class="q">Denkaufwand</div>`+Object.entries(EFFORTS).map(([k,d])=>`<button data-t="e:${k}" class="${k===(o.effort||"medium")?"on":""}">${d[0].toUpperCase()+d.slice(1)}</button>`).join(""),x,y,t=>{
+    dropOv();const [f,v]=t.split(":");if(f==="m"&&v!==o.model){o.model=v;if(!o.draft)o.log.push(["tool",`Modell gewechselt: ${MODELS[v].n}`,0])}
+    if(f==="e"&&v!==o.effort){o.effort=v;if(!o.draft)o.log.push(["tool",`Denkaufwand: ${EFFORTS[v]}`,0])}afterPick(o)});
+  else menu(`<div class="q">Wo soll ${o.agent?"der Agent":"die Session"} arbeiten?</div><button data-t="worktree" class="${o.wt==="worktree"?"on":""}">Eigener Worktree<kbd>neuer Branch</kbd></button><button data-t="main" class="${o.wt==="main"?"on":""}">Haupt-Checkout<kbd>${o.agent?"z. B. für main":"teilt Dateien"}</kbd></button>`,x,y,t=>{
+    dropOv();o.wt=t;afterPick(o)});
+}
+function afterPick(o){const ta=o.el.querySelector(".reply textarea"),v=ta&&ta.value;render(o);if(v)o.el.querySelector(".reply textarea").value=v;if(openId===o.id)open(o,true);relayout();
+  (replyId===o.id?o.el.querySelector(".reply textarea"):null)?.focus()}
+function doAction(o,a,btn){
+  if((a==="pick-model"||a==="pick-wt")&&btn)return pickMenu(o,a,btn);
+  if(a==="fix"||a==="fix-merge")return fixPr(o,a==="fix-merge");
+  if(a==="archive")return archive(o);
+  if(a==="later"){if(o.st==="done")o.st="rest";else{o.snoozed=true;o.snoozeLen=o.log.length}if(replyId===o.id)endReply();render(o);if(openId===o.id)open(o,true);relayout();return}
+  if(a==="run")return agentRun(o,"Von Hand gestartet",null);
+  if(a==="allow"||a==="deny")return decide(o,a==="allow");
+  if(a==="merge")o.pr.confirm=true;
+  else if(a==="merge-no")o.pr.confirm=false;
+  else if(a==="merge-go"){o.pr={n:o.pr.n,state:"merged",text:"gemergt in main, Branch gelöscht"};o.ev=performance.now();onMerged(o)}
+  else if(a==="take")o.confirmTake=true;
+  else if(a==="take-no")o.confirmTake=false;
+  else if(a==="take-go"){o.own="own";o.confirmTake=false;delete o.app;o.ev=performance.now()}
+  render(o);if(openId===o.id)open(o,true);relayout();
+  if(a==="take-go")setTimeout(()=>(openId===o.id?$("pCompose").querySelector("textarea"):o.el.querySelector(".reply textarea"))?.focus(),60);
+}
+/* double-click into a document's text on the board opens it for editing */
+world.addEventListener("dblclick",e=>{const pk=e.target.closest(".peek");if(pk){e.stopPropagation();editDoc(get(pk.closest(".item").dataset.id))}});
+world.addEventListener("click",e=>{const b=e.target.closest("button[data-a]");if(!b)return;e.stopPropagation();doAction(get(b.closest(".item").dataset.id),b.dataset.a,b)});
+$("pMeta").addEventListener("click",e=>{const b=e.target.closest("button[data-a]");if(b&&openId)doAction(get(openId),b.dataset.a,b)});
+
+/* ---------- panel ---------- */
+const body=$("pBody"),live=$("pLive"),comp=$("pCompose");
+function open(o,keep){
+  dropOv();if(!keep&&replyId)endReply();if(o.st==="done")o.st="rest";openId=o.id;I.forEach(render);app.classList.add("side");app.classList.toggle("waiting",o.st==="wait");
+  /* the sidebar narrows the board: once it has opened, bring the element fully into the remaining area */
+  /* The view stays where it is. Only if the element itself ends up hidden behind the opened sidebar,
+     the board shifts just enough to show its dot again. */
+  if(!keep)setTimeout(()=>{const p=scr(o),W=lens.clientWidth;if(p.x>W-24)fly({s:cam.s,x:cam.x-(p.x-(W-60)),y:cam.y});relayout()},340);
+  if(document.activeElement!==$("pTitle"))$("pTitle").textContent=o.t;$("pTitle").contentEditable=o.k==="session"?"true":"false";$("pArch").setAttribute("aria-label",o.k==="session"?"Vom Board nehmen":"Vom Board lösen");body.innerHTML="";$("pActs").innerHTML=o.k==="session"?panelActs(o):"";
+  if(o.k!=="session"){
+    $("pMeta").textContent=o.src;live.hidden=true;comp.hidden=true;
+    if(o.editing){body.append(o.editing);return}
+    /* click into the text to edit its Markdown; ⌘S or leaving the field saves, Esc discards (ADR-0011) */
+    const d=document.createElement("div");d.className="doctext editable";
+    d.innerHTML=(o.text||`<p class="prnote">Leer. Klick hinein, um zu schreiben.</p>`)+(o.used.length?`<div class="used">Zuletzt verwendet von ${o.used.map(id=>get(id)?esc(get(id).t):"").filter(Boolean).join(", ")}</div>`:"");body.append(d);
+    d.addEventListener("click",e=>{if(!e.target.closest(".used"))editDoc(o)});
+    if(!keep)$("pClose").focus();relayout();return;
+  }
+  /* one meta line: island · branch (or agent) · where it works · model. The model is a quiet button where it can be changed. */
+  const modelPart=o.own==="remote"?"Cloud-Agent auf GitHub":!o.model?"":canPickModel(o)?`<button class="chip" data-a="pick-model">${modelLabel(o)}</button>`:esc(MODELS[o.model].n);
+  $("pMeta").innerHTML=[esc(wsName(o.ws)),o.agent?`Agent · ${esc(o.trigger)} · ${o.runs.length} Läufe`:esc(o.br),o.wt&&o.wt!=="cloud"?esc(wtLabel(o)):"",modelPart].filter(Boolean).join(" · ");
+  const sh=sharesCheckout(o);if(sh.length)$("pActs").insertAdjacentHTML("afterbegin",`<div class="prnote">Teilt den Haupt-Checkout mit „${esc(cut(sh[0].t,34))}“. Beide können dieselben Dateien ändern.</div>`);
+  let last=null,run=[];
+  const flush=()=>{if(!run.length)return;const steps=run;run=[];
+    const f=document.createElement("button");f.className="fold";f.textContent=`${steps.length} ${steps.length>1?"Schritte":"Schritt"} ▸`;
+    f.addEventListener("click",()=>{const s=f.nextElementSibling;if(s?.classList.contains("fsteps")){s.remove();f.textContent=f.textContent.replace("▾","▸")}
+      else{const d=document.createElement("div");d.className="fsteps";steps.forEach(t=>{const x=document.createElement("div");x.textContent=t;d.append(x)});f.after(d);f.textContent=f.textContent.replace("▸","▾")}});
+    body.append(f)};
+  o.log.forEach(m=>{
+    if(m[0]==="tool"){run.push(m[1]);return}
+    flush();const tb=(m[0]==="ask"||m[0]==="agent")?m[3]:m[2];
+    if(last===null||Math.abs(last-tb)>=10){const t=document.createElement("div");t.className="time";t.textContent=ago(tb);body.append(t)}last=tb;
+    const d=document.createElement("div");d.className="m "+m[0];
+    if(m[0]==="ask"){d.innerHTML=`<div>${esc(m[1])}</div><code>${esc(m[2])}</code>`+(o.own==="own"?`<div class="btns" style="display:flex;gap:8px"><button class="btn primary">Erlauben</button><button class="btn">Ablehnen</button></div>`:"");
+      d.querySelectorAll(".btn").forEach((b,j)=>b.addEventListener("click",()=>decide(o,!j)))}
+    else if(m[0]==="agent"){d.classList.toggle("out",m[4]==="out");d.innerHTML=`<small>${m[4]==="out"?"an":"von"} ${esc(m[1])}</small>${esc(m[2])}`}
+    else if(m[0]==="you"&&m[3])d.innerHTML=m[3];
+    else d.textContent=m[1];
+    body.append(d)});
+  flush();
+  live.hidden=o.st!=="work";live.querySelector("span").textContent=o.now||"";
+  comp.hidden=false;
+  /* an observed session says once, where you would type, why you cannot, and offers the takeover right there */
+  if(o.own==="obs"){comp.innerHTML=o.confirmTake
+    ?`<div class="row2">${esc(o.app)} hat die Session vielleicht noch offen. Dort sollte sie danach nicht weiterlaufen.<button class="btn primary" data-a="take-go">Übernehmen</button><button class="btn" data-a="take-no">Abbrechen</button></div>`
+    :`<div class="row2">Läuft in ${esc(o.app)}.<button class="btn" data-a="take">Übernehmen …</button></div>`}
+  else{const draft=comp.querySelector("textarea")?.value||"",hadF=document.activeElement===comp.querySelector("textarea");
+    comp.innerHTML=`<textarea id="compose" placeholder="${o.own==="remote"?"Kommentar auf GitHub …":o.st==="wait"?"Claude wartet auf deine Antwort …":"Etwas ergänzen …"}"></textarea>`;
+    const ta=comp.querySelector("textarea");ta.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&ta.value.trim()){e.preventDefault();send(o,ta.value.trim());ta.value=""}if(e.key==="Escape"){e.stopPropagation();close()}});
+    ta.value=draft;if(!keep||hadF)ta.focus({preventScroll:true})}
+  body.scrollTop=body.scrollHeight;relayout();
+}
+function panelActs(o){
+  /* agent: role and trigger are edited in place, like the title; the trigger is read back as a rule after editing */
+  let h=o.agent?`<div class="agentdef"><div class="lbl">Rolle</div><div class="ed" data-f="role" contenteditable="true">${esc(o.role)}</div>`+
+    `<div class="lbl">Läuft</div><div class="ed" data-f="trigger" contenteditable="true">${esc(o.trigger)}</div></div><div class="row2"><button class="btn" data-a="run">Jetzt ausführen</button></div>`:"";
+  if(o.pr)h+=`<div class="row2">${prRow(o)}</div>`;
+  if((o.st==="wait"||o.st==="done")&&!o.snoozed)h+=`<div class="row2"><button class="btn quiet" data-a="later">${o.st==="done"?"Gesehen":"Später"}</button></div>`;
+  return h;
+}
+$("pActs").addEventListener("click",e=>{const b=e.target.closest("button[data-a]");if(b&&openId)doAction(get(openId),b.dataset.a)});
+$("pActs").addEventListener("keydown",e=>{const ed=e.target.closest(".ed");if(!ed)return;e.stopPropagation();
+  if(e.key==="Enter"){e.preventDefault();ed.blur()}if(e.key==="Escape"){e.preventDefault();open(get(openId),true)}});
+$("pActs").addEventListener("focusout",e=>{const ed=e.target.closest(".ed");const o=openId&&get(openId);if(!ed||!o)return;
+  const v=ed.textContent.replace(/\s+/g," ").trim();
+  if(ed.dataset.f==="role"&&v)o.role=v;
+  if(ed.dataset.f==="trigger"){const tr=parseTrigger(v);o.trig=tr;o.trigger=tr.label;
+    if(tr.unclear){o.log.push(["ai",`Den Auslöser „${tr.unclear}“ habe ich nicht verstanden. Ich laufe vorerst nur von Hand.`,0]);o.st="wait"}}
+  render(o);open(o,true);relayout();save()});
+$("pCompose").addEventListener("click",e=>{const b=e.target.closest("button[data-a]");if(b&&openId)doAction(get(openId),b.dataset.a)});
+function editDoc(o){
+  if(openId!==o.id)open(o);
+  const ta=document.createElement("textarea");ta.className="mdedit";ta.id="md-"+o.id;ta.value=o.md;ta.spellcheck=false;
+  o.editing=ta;body.innerHTML="";body.append(ta);ta.style.height=Math.max(220,ta.scrollHeight+20)+"px";ta.focus();
+  let done=false;
+  const finish=save=>{if(done)return;done=true;o.editing=null;
+    if(save&&ta.value!==o.md){setMd(o,ta.value);touch(o)}
+    render(o);if(openId===o.id)open(o,true)};
+  ta.addEventListener("keydown",e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();finish(true)}
+    if(e.key==="Escape"){e.preventDefault();e.stopPropagation();finish(false)}});
+  ta.addEventListener("blur",()=>finish(true));
+}
+/* Rename (ADR-0004 custom_title): click the title in the detail panel, or F2 on the board.
+   Enter keeps it, Esc restores the old one, an empty title goes back to the automatic one. */
+const pTitle=$("pTitle");
+function renameStart(){pTitle.focus();const r=document.createRange();r.selectNodeContents(pTitle);const s=getSelection();s.removeAllRanges();s.addRange(r)}
+pTitle.addEventListener("focus",()=>{const o=openId&&get(openId);if(o)pTitle.dataset.before=o.t});
+pTitle.addEventListener("keydown",e=>{
+  if(e.key==="Enter"){e.preventDefault();pTitle.blur()}
+  if(e.key==="Escape"){e.preventDefault();e.stopPropagation();pTitle.textContent=pTitle.dataset.before||"";pTitle.blur()}});
+pTitle.addEventListener("blur",()=>{const o=openId&&get(openId);if(!o||o.k!=="session")return;
+  const v=pTitle.textContent.replace(/\s+/g," ").trim();if(!o.autoT)o.autoT=o.t;
+  o.t=v||o.autoT;if(!v)o.custom=false;else if(v!==o.autoT)o.custom=true;
+  pTitle.textContent=o.t;render(o);relayout()});
+/* closing keeps the view exactly where it is */
+function close(){const id=openId;openId=null;app.classList.remove("side","waiting");I.forEach(render);relayout();if(id&&get(id))focusItem(get(id),false)}
+$("pClose").addEventListener("click",close);
+$("pArch").addEventListener("click",()=>{const o=openId&&get(openId);if(o)archive(o)});
+
+/* ---------- camera ---------- */
+const LVS=()=>[fit().s,2.0,3.6];
+function fit(){const w=lens.clientWidth,h=lens.clientHeight,B=miniBounds(),bw=B.x2-B.x1,bh=B.y2-B.y1,s=Math.min(w/bw,h/bh)*.95;return{s,x:(w-bw*s)/2-B.x1*s,y:(h-bh*s)/2-B.y1*s}}
+let lastS=0;
+function apply(){world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.s})`;world.style.setProperty("--inv",1/cam.s);
+  const b=baseTier(cam.s);document.querySelectorAll(".scale [data-l]").forEach(x=>x.classList.toggle("on",+x.dataset.l===b));
+  if(ov&&!ov.classList.contains("keys"))dropOv();
+  if(Math.abs(cam.s-lastS)/cam.s>.02){lastS=cam.s;drawLinks()}relayout()}
+function fly(to){fly.last=to;cancelAnimationFrame(anim);const f={...cam},t0=performance.now(),D=matchMedia("(prefers-reduced-motion: reduce)").matches?1:420;
+  const st=now=>{const k=Math.min(1,(now-t0)/D),e=1-Math.pow(1-k,3);cam.s=f.s*Math.pow(to.s/f.s,e);cam.x=f.x+(to.x-f.x)*e;cam.y=f.y+(to.y-f.y)*e;apply();if(k<1)anim=requestAnimationFrame(st)};anim=requestAnimationFrame(st)}
+function toLevel(i){
+  i=Math.max(0,Math.min(2,i));if(i===0)return fly(fit());
+  const s=LVS()[i],o=focusId?get(focusId):null,w=lens.clientWidth,h=lens.clientHeight;
+  const cx=o?o.x:(w/2-cam.x)/cam.s,cy=o?o.y:(h/2-cam.y)/cam.s;fly({s,x:w/2-cx*s,y:h/2-cy*s});
+}
+function toIsland(k){const h=hulls()[k];if(!h)return;const w=lens.clientWidth,hh=lens.clientHeight,s=Math.min(w/(h.x2-h.x1),hh/(h.y2-h.y1))*.85;
+  fly({s,x:w/2-(h.x1+h.x2)/2*s,y:hh/2-(h.y1+h.y2)/2*s})}
+const curLevel=()=>baseTier(cam.s);
+document.querySelectorAll(".scale [data-l]").forEach(b=>b.addEventListener("click",()=>toLevel(+b.dataset.l)));
+/* Trackpad: two-finger swipe pans, pinch zooms (the browser reports pinch as wheel + ctrlKey).
+   Mouse wheel pans as well; ⌘ or Ctrl + wheel zooms. */
+lens.addEventListener("wheel",e=>{
+  const sc=e.target.closest(".peek,.thread");if(sc&&sc.scrollHeight>sc.clientHeight&&!e.ctrlKey&&!e.metaKey)return;
+  e.preventDefault();cancelAnimationFrame(anim);
+  if(!e.ctrlKey&&!e.metaKey){const k=e.deltaMode===1?16:1;cam.x-=e.deltaX*k;cam.y-=e.deltaY*k;apply();return}
+  const r=lens.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,ns=Math.min(6,Math.max(fit().s*.6,cam.s*Math.exp(-e.deltaY*.01)));
+  cam.x=mx-(mx-cam.x)*ns/cam.s;cam.y=my-(my-cam.y)*ns/cam.s;cam.s=ns;apply()},{passive:false});
+
+/* hover */
+let hT=null;
+world.addEventListener("pointerover",e=>{if(drag)return;const n=e.target.closest(".item");const id=n?n.dataset.id:null;
+  clearTimeout(hT);if(id===hoverId)return;hT=setTimeout(()=>{hoverId=id;relayout()},id?90:250);relate(id&&get(id).used?get(id):null)});
+world.addEventListener("pointerout",e=>{if(e.relatedTarget?.closest?.(".item"))return;clearTimeout(hT);hT=setTimeout(()=>{hoverId=null;relayout()},250);relate(null)});
+
+/* ---------- keyboard ---------- */
+function focusItem(o,pan=true){
+  focusId=o?o.id:null;I.forEach(x=>x.el.classList.toggle("kfocus",x.id===focusId));lens.focus({preventScroll:true});
+  if(o&&pan)ensureVisible(o);if(o&&connect)drawTmp(connect,o);relayout();
+}
+function nearest(from,dx,dy){let best=null,bs=1e9;
+  I.forEach(o=>{if(o===from)return;const vx=o.x-from.x,vy=o.y-from.y,along=vx*dx+vy*dy;if(along<=4)return;const sc=along+Math.abs(vx*dy-vy*dx)*2.2;if(sc<bs){bs=sc;best=o}});return best}
+let connect=null,gMode=false;const status=$("status");
+function drawTmp(a,b){gP.querySelector(".tmp")?.remove();if(!b||a===b)return;const l=document.createElementNS(NS,"line");l.setAttribute("class","tmp");
+  l.setAttribute("x1",a.x);l.setAttribute("y1",a.y);l.setAttribute("x2",b.x);l.setAttribute("y2",b.y);gP.append(l)}
+function endConnect(){connect=null;status.textContent="";gP.querySelector(".tmp")?.remove()}
+function toggleKeys(force){const k=$("keys");k.hidden=force===undefined?!k.hidden:!force}
+$("helpBtn").addEventListener("click",()=>toggleKeys());
+lens.addEventListener("keydown",e=>{
+  if(e.target!==lens)return;
+  const o=focusId?get(focusId):null,k=e.key;
+  if(gMode){gMode=false;status.textContent="";const isl=Object.keys(FR).find(n=>wsName(n)[0].toUpperCase()===k.toUpperCase());if(isl)toIsland(isl);return}
+  const dir={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[k];
+  /* arrows pan the board; Shift + arrows jump to the nearest element in that direction */
+  if(dir&&!e.shiftKey&&!connect){e.preventDefault();cancelAnimationFrame(anim);const step=e.repeat?40:90;cam.x-=dir[0]*step;cam.y-=dir[1]*step;apply();return}
+  if(dir){e.preventDefault();const n=o?nearest(o,...dir):I.find(x=>attention(x))||I[0];if(n)focusItem(n);return}
+  if(k==="+"||k==="="){e.preventDefault();toLevel(curLevel()+1);return}
+  if(k==="-"){e.preventDefault();toLevel(curLevel()-1);return}
+  if(k==="g"||k==="G"){gMode=true;status.textContent="Zu welcher Insel? "+Object.keys(FR).map(n=>`${wsName(n)[0].toUpperCase()} ${wsName(n)}`).join(" · ");return}
+  if(k==="n"||k==="N"){e.preventDefault();newSession(activeWs()||Object.keys(FR)[0]);return}
+  if((k==="z"||k==="Z")&&(e.metaKey||e.ctrlKey)){e.preventDefault();const u=lastUndo;lastUndo=null;if(u)u();else unarchive();return}
+  if((k==="Backspace"||k==="Delete")&&o&&o.k==="session"){e.preventDefault();archive(o);return}
+  /* W next, Q previous element that needs you */
+  if(k==="w"||k==="W"||k==="q"||k==="Q"){const ws=I.filter(x=>attention(x));if(!ws.length)return;const i=ws.indexOf(o),step=/q/i.test(k)?-1:1;
+    const n=ws[i<0?(step>0?0:ws.length-1):(i+step+ws.length)%ws.length];focusItem(n,false);flyTo(n);return}
+  /* Esc closes things, innermost first; it never zooms */
+  if(k==="Escape"){if(connect)endConnect();else if(!$("keys").hidden)toggleKeys(false);else if(app.classList.contains("side"))close();else if(focusId){focusItem(null,false)}return}
+  if(k==="m"||k==="M"){e.preventDefault();toggleListen();return}
+  if(!o)return;
+  if(connect&&k==="Enter"){e.preventDefault();const a=connect;endConnect();if(o!==a&&o.k==="session"&&!L.some(l=>(l.a===a.id&&l.b===o.id)||(l.a===o.id&&l.b===a.id))){const p=scr(o);typeMenu(a,o,p.x+12,p.y+12)}return}
+  if(k==="Enter"){e.preventDefault();open(o);return}
+  if(k==="F2"&&o.k==="session"){e.preventDefault();open(o,false);setTimeout(()=>renameStart(),0);return}
+  if(o.k!=="session")return;
+  if(k===" "){e.preventDefault();startReply(o)}
+  else if(k==="s"||k==="S")doAction(o,"later");
+  else if((k==="e"||k==="E")&&pendingAsk(o))decide(o,true);
+  else if((k==="a"||k==="A")&&pendingAsk(o))decide(o,false);
+  else if(k==="v"||k==="V"){connect=o;status.textContent=`Verbinden von „${cut(o.t,32)}“: Ziel mit den Pfeiltasten wählen, Enter verbindet, Esc bricht ab.`}});
+
+/* ---------- pointer ---------- */
+let drag=null;
+const wp=e=>{const r=lens.getBoundingClientRect();return{x:(e.clientX-r.left-cam.x)/cam.s,y:(e.clientY-r.top-cam.y)/cam.s}};
+lens.addEventListener("pointerdown",e=>{
+  if(ov&&!ov.contains(e.target)&&!ov.classList.contains("keys"))dropOv();
+  if(replyId&&!e.target.closest(`.item[data-id="${replyId}"] .bub`))endReply();
+  if(e.target.closest("button[data-a],.reply,.thread,.own-note,a,.add,.scale,.mini,.keys,.status,.ear,.edge"))return;
+  if(e.target.closest(".peek")&&e.target.closest(".item").dataset.t==="3")return;
+  cancelAnimationFrame(anim);
+  const n=e.target.closest(".item"),knob=e.target.closest(".knob"),bub=e.target.closest(".bub"),nm=e.target.closest(".isname"),base={sx:e.clientX,sy:e.clientY,moved:false};
+  lens.setPointerCapture(e.pointerId);
+  if(knob){const o=get(n.dataset.id),l=document.createElementNS(NS,"line");l.setAttribute("class","tmp");
+    ["x1","x2"].forEach(k=>l.setAttribute(k,o.x));["y1","y2"].forEach(k=>l.setAttribute(k,o.y));gP.append(l);drag={...base,type:"link",o,l}}
+  else if(n)drag={...base,type:"move",o:get(n.dataset.id),bub:!!bub};
+  else if(nm){const k=nm.dataset.ws;drag={...base,type:"island",k,f0:{...FR[k]},start:I.filter(o=>o.ws===k).map(o=>[o,o.x,o.y])}}
+  else if(e.target.closest(".fgrip")){const k=e.target.closest(".fgrip").dataset.ws;drag={...base,type:"resize",k,f0:{...FR[k]}}}
+  else{drag={...base,type:"pan",cx:cam.x,cy:cam.y};lens.classList.add("panning")}});
+lens.addEventListener("pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;if(Math.hypot(dx,dy)>4)drag.moved=true;if(!drag.moved)return;
+  if(drag.type==="pan"){cam.x=drag.cx+dx;cam.y=drag.cy+dy;apply()}
+  else if(drag.type==="move"){const p=wp(e);drag.o.x=p.x;drag.o.y=p.y;drag.o.el.style.left=p.x+"px";drag.o.el.style.top=p.y+"px";relate(null);drawLinks();relayout()}
+  else if(drag.type==="island"){
+    /* move the frame with its content; an axis that would overlap another frame stops at the last free position */
+    const k=drag.k,f0=drag.f0,want={...f0,x:f0.x+dx/cam.s,y:f0.y+dy/cam.s},cur=FR[k];
+    let next=frameFree(k,want)?want:frameFree(k,{...cur,x:want.x})?{...cur,x:want.x}:frameFree(k,{...cur,y:want.y})?{...cur,y:want.y}:cur;
+    FR[k]=next;const ox=next.x-f0.x,oy=next.y-f0.y;
+    drag.start.forEach(([o,x,y])=>{o.x=x+ox;o.y=y+oy;o.el.style.left=o.x+"px";o.el.style.top=o.y+"px"});drawIslands();drawLinks();relayout()}
+  else if(drag.type==="resize"){
+    /* resize from the corner: never smaller than its content, never into another frame */
+    const k=drag.k,f0=drag.f0,its=I.filter(o=>o.ws===k);
+    const minW=Math.max(220,...its.map(o=>o.x-f0.x+FPAD)),minH=Math.max(160,...its.map(o=>o.y-f0.y+FPAD));
+    const want={...f0,w:Math.max(minW,f0.w+dx/cam.s),h:Math.max(minH,f0.h+dy/cam.s)},cur=FR[k];
+    FR[k]=frameFree(k,want)?want:frameFree(k,{...cur,w:want.w})?{...cur,w:want.w}:frameFree(k,{...cur,h:want.h})?{...cur,h:want.h}:cur;
+    drawIslands();relayout()}
+  else{const p=wp(e);drag.l.setAttribute("x2",p.x);drag.l.setAttribute("y2",p.y)}});
+lens.addEventListener("pointerup",e=>{if(!drag)return;lens.classList.remove("panning");const d=drag;drag=null;
+  /* a click (no drag) on free space activates the island under it, or none outside islands; it also clears the selection */
+  /* a plain click on the canvas also closes the detail panel, like Esc; dragging the canvas keeps it open */
+  if(d.type==="pan"&&!d.moved&&app.classList.contains("side"))close();
+  if(d.type==="pan"&&!d.moved){const p=wp(e);selWs=Object.keys(FR).find(k=>{const f=FR[k];return p.x>=f.x&&p.x<=f.x+f.w&&p.y>=f.y&&p.y<=f.y+f.h})||null;
+    if(focusId)focusItem(null,false);markActive();return}
+  if(d.type==="move"&&!d.moved){focusItem(d.o,false);if(d.bub&&d.o.k==="session")startReply(d.o);else open(d.o)}
+  else if(d.type==="link"){d.l.remove();const p=wp(e),t=I.find(o=>o.k==="session"&&o!==d.o&&Math.hypot(o.x-p.x,o.y-p.y)<16/cam.s);
+    if(t&&!L.some(k=>(k.a===d.o.id&&k.b===t.id)||(k.a===t.id&&k.b===d.o.id))){const r=lens.getBoundingClientRect();typeMenu(d.o,t,e.clientX-r.left+8,e.clientY-r.top+8)}}
+  else if(d.type==="move"&&d.moved){dropInFrame(d.o);save();saveFrames()}
+  else if(d.type==="island"||d.type==="resize"){if(d.moved){save();saveFrames()}}});
+/* Dropped beyond its frame: the frame grows once to take it, if that keeps it clear of the others; otherwise the element stays inside. */
+function dropInFrame(o){
+  const f=FR[o.ws],i=inner(f);
+  if(o.x>=i.x1&&o.x<=i.x2&&o.y>=i.y1&&o.y<=i.y2)return;
+  const x1=Math.min(f.x,o.x-FPAD),y1=Math.min(f.y,o.y-FTOP),x2=Math.max(f.x+f.w,o.x+FPAD),y2=Math.max(f.y+f.h,o.y+FPAD);
+  const grown={x:x1,y:y1,w:x2-x1,h:y2-y1};
+  if(frameFree(o.ws,grown))FR[o.ws]=grown;
+  else{const j=inner(f);o.x=Math.max(j.x1,Math.min(j.x2,o.x));o.y=Math.max(j.y1,Math.min(j.y2,o.y));o.el.style.left=o.x+"px";o.el.style.top=o.y+"px"}
+  drawIslands();drawLinks();relayout();
+}
+/* "?" toggles the shortcut overview from anywhere, except while typing */
+document.addEventListener("keydown",e=>{if(e.key!=="?"||e.defaultPrevented)return;const t=e.target;
+  if(t.closest?.("input,textarea,[contenteditable='true']"))return;e.preventDefault();toggleKeys()});
+/* Esc anywhere closes the detail panel, also while focus is inside it (unless something inner already handled Esc) */
+document.addEventListener("keydown",e=>{if(e.key!=="Escape"||e.target===lens||e.defaultPrevented)return;
+  if(app.classList.contains("side")&&!e.target.closest?.(".item")){e.preventDefault();close()}});
+
+I.forEach(render);drawIslands();
+Object.assign(cam,fit());lastS=cam.s;apply();drawLinks();layout();
+/* The sidebar opening or closing resizes the board. That must never re-fit or move the view; the board only re-lays out text. */
+new ResizeObserver(()=>relayout()).observe(lens);
+
+/* ---------- new session: "+" beside an island name, or N for the active island ---------- */
+function freeSpot(ws){
+  const f=FR[ws],i=inner(f),others=I.map(o=>[o.x,o.y]);let best=null;
+  /* keep clear of the island name row at the top */
+  /* ...and leave room for the prompt bubble to the right of and below the new dot */
+  for(let y=i.y1+30;y<=Math.max(i.y1+30,i.y2-110);y+=30)for(let x=i.x1;x<=Math.max(i.x1,i.x2-200);x+=30){const d=Math.min(...others.map(([ox,oy])=>Math.hypot(ox-x,oy-y)),1e9);if(!best||d>best.d)best={x,y,d}}
+  if(best&&best.d>=90)return best;
+  /* no room: grow the frame downwards once, if that keeps it clear of the others */
+  const grown={...f,h:f.h+140};if(frameFree(ws,grown)){FR[ws]=grown;drawIslands();saveFrames();return{x:i.x1+40,y:f.y+f.h+40}}
+  return best||{x:i.x1,y:i.y1};
+}
+let nseq=0;
+function newSession(ws,asAgent){
+  if(replyId)endReply();
+  const p=freeSpot(ws),o={id:"n"+(++nseq),k:"session",ws,own:"own",x:p.x,y:p.y,t:asAgent?"Neuer Agent":"Neue Session",st:"rest",ago:0,br:"main",draft:true,log:[],
+    /* defaults: everything works in the main checkout on the current branch; a worktree only on request.
+       Task sessions start with the thorough model, agents with the balanced one and little thinking. */
+    wt:"main",model:asAgent?"sonnet":"opus",effort:asAgent?"low":"medium",
+    ...(asAgent?{agent:true,role:"",trigger:"",runs:[]}:{})};
+  I.push(o);render(o);focusItem(o,false);
+  flyTo(o);
+  startReply(o);
+}
+world.addEventListener("click",e=>{const b=e.target.closest(".isname .add");if(b){e.stopPropagation();const r=b.getBoundingClientRect(),l=lens.getBoundingClientRect();islandMenu(b.dataset.ws,r.left-l.left,r.bottom-l.top+6)}});
+lens.addEventListener("dblclick",e=>{if(e.target.closest(".item,.isname,.ov,.mini,.scale,.edge"))return;const p=wp(e);
+  if(Object.values(FR).some(f=>p.x>=f.x&&p.x<=f.x+f.w&&p.y>=f.y&&p.y<=f.y+f.h))return;
+  const l=lens.getBoundingClientRect();newIslandAt(p.x,p.y,e.clientX-l.left,e.clientY-l.top)});
+lens.addEventListener("pointermove",e=>{if(drag)return;const p=wp(e),k=Object.keys(FR).find(k=>{const f=FR[k];return p.x>=f.x&&p.x<=f.x+f.w&&p.y>=f.y&&p.y<=f.y+f.h})||null;
+  if(k!==pointerWs){pointerWs=k;markActive()}});
+lens.addEventListener("pointerleave",()=>{pointerWs=null;markActive()});
+
+/* Self-check of ADR-0012, at every zoom level: layout twice changes nothing; frames never overlap;
+   no label or non-overlay bubble leaves its frame; no bubble or label overlaps edge hints or the minimap.
+   Result goes to <html data-check> and the console, not into the UI. */
+function selfCheck(){
+  const saved={...cam},problems=[];const W=lens.clientWidth,H=lens.clientHeight;
+  const lr=lens.getBoundingClientRect(),rel=el=>{const r=el.getBoundingClientRect();return{x:r.left-lr.left,y:r.top-lr.top,w:r.width,h:r.height}};
+  const snap=()=>I.map(o=>[o.id,o.el.dataset.t,o.el.classList.contains("sb"),o.el.classList.contains("sl"),o.bp,o.lp,o.el.querySelector(".lab").style.maxWidth].join("|")).join(";");
+  const ks=Object.keys(FR);
+  ks.forEach((a,i)=>ks.slice(i+1).forEach(b=>{if(framesOverlap(FR[a],FR[b]))problems.push(`frames ${a}/${b} overlap`)}));
+  [0,1,2].forEach(lv=>{
+    const s=LVS()[lv];
+    [[.5,.5],[.2,.3],[.8,.7]].forEach(([fx,fy])=>{
+      const B=miniBounds(),cx=B.x1+(B.x2-B.x1)*fx,cy=B.y1+(B.y2-B.y1)*fy;
+      Object.assign(cam,{s,x:W/2-cx*s,y:H/2-cy*s});world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.s})`;world.style.setProperty("--inv",1/cam.s);
+      I.forEach(o=>{o.el.classList.remove("hiding");o._shownT=null});
+      layout();const a=snap();layout();const b=snap();
+      if(a!==b)problems.push(`level ${lv} @${fx},${fy}: layout not idempotent`);
+      const chrome=[$("mini"),...edgeBox.children].map(rel);
+      const hints=[...edgeBox.children].map(rel);
+      I.forEach(o=>{const p=scr(o);if(p.x<0||p.x>W||p.y<0||p.y>H)return;const d={x:p.x-8,y:p.y-8,w:16,h:16};
+        if(hints.some(c=>d.x<c.x+c.w&&c.x<d.x+d.w&&d.y<c.y+c.h&&c.y<d.y+d.h))problems.push(`level ${lv}: edge hint covers dot of ${o.id}`)});
+      I.forEach(o=>{const f=FR[o.ws],fr={x:f.x*s+cam.x,y:f.y*s+cam.y,w:f.w*s,h:f.h*s};
+        const p=scr(o);if(p.x<0||p.x>W||p.y<0||p.y>H)return;
+        [[".bub","sb"],[".lab","sl"]].forEach(([sel,cls])=>{if(!o.el.classList.contains(cls))return;const r=rel(o.el.querySelector(sel));
+          if(r.x<fr.x+2||r.y<fr.y+2||r.x+r.w>fr.x+fr.w-2||r.y+r.h>fr.y+fr.h-2)problems.push(`level ${lv}: ${sel} of ${o.id} leaves frame ${o.ws}`);
+          if(chrome.some(c=>r.x<c.x+c.w&&c.x<r.x+r.w&&r.y<c.y+c.h&&c.y<r.y+r.h))problems.push(`level ${lv}: ${sel} of ${o.id} under fixed chrome`)})});
+    });
+  });
+  /* Scenario: hover a session, then click into its bubble to reply. Bubble corner, its anchored edge and the camera must not move;
+     edge hints must not cover the reply bubble. Checked for every session that can reply, at the middle level. */
+  let scen=0;
+  I.filter(o=>o.k==="session"&&o.own!=="obs").forEach(o=>{
+    const s=LVS()[1];Object.assign(cam,{s,x:W*.45-o.x*s,y:H*.5-o.y*s});world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.s})`;world.style.setProperty("--inv",1/cam.s);
+    hoverId=null;replyId=null;I.forEach(x=>{x.lock=null;x.el.classList.remove("hiding");x._shownT=null});layout();
+    hoverId=o.id;layout();const b1=rel(o.el.querySelector(".bub")),p1=o.el.querySelector(".bub").dataset.p,c1={...cam};
+    replyId=o.id;render(o);layout();const b2=rel(o.el.querySelector(".bub")),p2=o.el.querySelector(".bub").dataset.p;
+    if(!o.el.classList.contains("sb")||b1.w<50)problems.push(`reply ${o.id}: no bubble on hover, scenario not checked`);
+    scen++;
+    const anchored=p1[0]==="s"?Math.abs(b1.y-b2.y):Math.abs(b1.y+b1.h-(b2.y+b2.h));
+    if(p1!==p2&&(fitsScreen(b1)))problems.push(`reply ${o.id}: bubble corner changed ${p1}→${p2}`);
+    else if(p1===p2&&anchored>4)problems.push(`reply ${o.id}: bubble moved by ${Math.round(anchored)}px`);
+    if(cam.x!==c1.x||cam.y!==c1.y||anim&&false)problems.push(`reply ${o.id}: camera moved`);
+    const hints=[...edgeBox.children].map(rel);
+    if(hints.some(c=>b2.x<c.x+c.w&&c.x<b2.x+b2.w&&b2.y<c.y+c.h&&c.y<b2.y+b2.h))problems.push(`reply ${o.id}: edge hint over reply bubble`);
+    if(!$("mini").classList.contains("tuck")&&(()=>{const m=rel($("mini"));return b2.x<m.x+m.w&&m.x<b2.x+b2.w&&b2.y<m.y+m.h&&m.y<b2.y+b2.h})())problems.push(`reply ${o.id}: bubble under minimap`);
+    replyId=null;hoverId=null;render(o);
+  });
+  function fitsScreen(r){return r.x>=8&&r.y>=8&&r.x+r.w<=W-8&&r.y+r.h<=H-8}
+  /* Scenario: open and close the detail panel; the view must not move at any point */
+  {const o=get("s5"),c0={...cam};open(o);close();if(cam.x!==c0.x||cam.y!==c0.y||cam.s!==c0.s)problems.push("panel open/close moved the view");app.classList.remove("side")}
+  /* Scenario: N creates a session in the island, focuses its prompt field; leaving it empty discards it */
+  {const n0=I.length;newSession("kestrel");const o=I.at(-1);render(o);replyId=o.id;render(o);layout();
+    const f=FR.kestrel;if(I.length!==n0+1||o.ws!=="kestrel")problems.push("new session not created");
+    if(o.x<f.x||o.x>f.x+f.w||o.y<f.y||o.y>f.y+f.h)problems.push("new session outside its island");
+    if(!o.el.querySelector(".reply textarea"))problems.push("new session has no prompt field");
+    endReply();if(I.length!==n0)problems.push("empty new session not discarded")}
+  /* Camera rules: with an island fully in view, "+", replying, Esc and edge-hint navigation never zoom,
+     and only edge-hint navigation may pan */
+  {cancelAnimationFrame(anim);const f=FR.orbit,s=Math.min(W/(f.w+80),H/(f.h+80));Object.assign(cam,{s,x:W/2-(f.x+f.w/2)*s,y:H/2-(f.y+f.h/2)*s});apply();layout();
+    const same=()=>cam.x===c.x&&cam.y===c.y&&cam.s===c.s;let c={...cam};
+    newSession("orbit");cancelAnimationFrame(anim);if(!same())problems.push("new session in a visible island moved the view");endReply();
+    c={...cam};startReply(get("s1"));cancelAnimationFrame(anim);if(!same())problems.push("replying moved the view");endReply();
+    c={...cam};lens.focus();lens.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));if(!same())problems.push("Esc moved or zoomed the view");
+    const hint=edgeBox.querySelector(".edge");if(hint){c={...cam};hint.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}));
+      /* the flight target is what matters */if(fly.last&&fly.last.s!==c.s)problems.push("edge hint changed the zoom");cancelAnimationFrame(anim)}}
+  /* board chrome follows the visible canvas: with the sidebar open, the zoom dots stay left of it */
+  {open(get("s5"),true);app.classList.add("side");const pw=document.querySelector(".panel");pw.style.transition="none";pw.offsetWidth;
+    const sc=document.querySelector(".scale").getBoundingClientRect(),pr=pw.getBoundingClientRect();
+    if(sc.right>pr.left+1)problems.push("zoom dots overlap the detail panel");close();pw.style.transition=""}
+  /* a click on free island space activates that island */
+  {const f=FR.kestrel,lr=lens.getBoundingClientRect(),x=lr.left+(f.x+f.w-30)*cam.s+cam.x,y=lr.top+(f.y+f.h-30)*cam.s+cam.y;
+    const hitEl=document.elementFromPoint(x,y);
+    if(hitEl&&lens.contains(hitEl)&&!hitEl.closest(".item")){hitEl.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,clientX:x,clientY:y,pointerId:1}));
+      lens.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,clientX:x,clientY:y,pointerId:1}));
+      if(selWs!=="kestrel")problems.push("click on free island space did not activate it")}selWs=null}
+  /* agents carry their moon and say so in the panel */
+  {const a=get("a1");if(!a.el.querySelector(".moon"))problems.push("agent without moon");open(a,true);if(!/Agent/.test($("pMeta").textContent))problems.push("agent panel without agent meta");close()}
+  /* at middle and near zoom every visible element in free space has its name, even when its bubble finds no room */
+  [1,2].forEach(lv=>{const s=LVS()[lv],f=FR.orbit;Object.assign(cam,{s,x:W/2-(f.x+f.w/2)*s,y:H/2-(f.y+f.h/2)*s});world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.s})`;world.style.setProperty("--inv",1/cam.s);
+    hoverId=null;focusId=null;replyId=null;layout();
+    const s1=get("s1"),p=scr(s1);if(p.x>40&&p.x<W-260&&p.y>40&&p.y<H-140&&!s1.el.classList.contains("sl"))problems.push(`level ${lv}: name of a working session missing`)});
+  /* at every zoom level, an element with free space around it shows its name, whether it needs you or not
+     (the case from the screenshot: a working and a snoozed session alone in an island) */
+  /* checked where it is decidable: the session sits mid-screen (away from edge hints) and its island leaves ≥ 120 px on one side */
+  [0,1,2].forEach(lv=>{const s=LVS()[lv],o=get("s7");Object.assign(cam,{s,x:W*.5-o.x*s,y:H*.55-o.y*s});world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.s})`;world.style.setProperty("--inv",1/cam.s);
+    hoverId=null;focusId=null;replyId=null;o.snoozed=false;layout();
+    const f=FR.meridian,room=Math.max((f.x+f.w-o.x)*s,(o.x-f.x)*s)-36;
+    if(room>=120&&!o.el.classList.contains("sl"))problems.push(`level ${lv}: name of a session without attention missing despite room`)});
+  /* short names are never hidden for lack of room */
+  {const m=get("m1");m.news={from:"x",text:"y"};m.ev=performance.now();render(m);layout();
+    const s=LVS()[0];if(!m.el.classList.contains("sl")&&scr(m).x>0&&scr(m).x<W)problems.push("short label of a changed memory hidden");m.news=null;m.ev=0;render(m)}
+  /* Markdown renders, and editing the source changes the rendered document */
+  {const d=get("d1");if(!/<h3>Stufe 1<\/h3>/.test(d.text)||!/<li>/.test(d.text))problems.push("markdown not rendered");
+    const md0=d.md;setMd(d,md0+"\n- Prüfeintrag");if(!/Prüfeintrag/.test(d.text))problems.push("markdown edit not rendered");setMd(d,md0)}
+  /* archive list: an archived element comes back to the board */
+  {const x=archived.find(o=>o.id==="x1");if(!x)problems.push("sample archive missing");else{unarchive(x);if(!I.includes(x))problems.push("unarchive failed");
+    I.splice(I.indexOf(x),1);x.el.remove();archived.push(x)}cancelAnimationFrame(anim)}
+  /* island menu offers add, archive list and island actions */
+  {const r=islNames.orbit.getBoundingClientRect();islandMenu("orbit",10,10);const n=ov?ov.querySelectorAll("button").length:0;dropOv();if(n<6)problems.push("island menu incomplete")}
+  /* triggers are read into rules */
+  {const T=[["nach jedem Merge in main","nach jedem Merge in main"],["bei jedem neuen PR","bei jedem neuen PR"],["werktags 8 Uhr","werktags um 8:00 Uhr"],["wenn CI rot ist","wenn CI rot ist"],["","nur von Hand"]];
+    T.forEach(([i,o])=>{if(parseTrigger(i).label!==o)problems.push(`trigger "${i}" read as "${parseTrigger(i).label}"`)});if(!parseTrigger("irgendwann mal").unclear)problems.push("unclear trigger not flagged")}
+  /* a new agent: role + trigger become an agent with that rule */
+  {newSession("kestrel",true);const a=I.at(-1);render(a);a.el.querySelector(".reply textarea").value="Prüft jede Migration auf Defaults";const ti=a.el.querySelector(".trig-in");
+    if(!ti)problems.push("new agent has no trigger field");else{ti.value="bei jedem neuen PR";createAgent(a,"Prüft jede Migration auf Defaults");
+      if(!a.agent||a.draft||a.trigger!=="bei jedem neuen PR")problems.push("agent not created with its trigger")}
+    I.splice(I.indexOf(a),1);a.el.remove();replyId=null;cancelAnimationFrame(anim)}
+  /* ? toggles the overview, Q goes to the previous element that needs you */
+  {const k0=$("keys").hidden;document.body.dispatchEvent(new KeyboardEvent("keydown",{key:"?",bubbles:true}));const k1=$("keys").hidden;
+    document.body.dispatchEvent(new KeyboardEvent("keydown",{key:"?",bubbles:true}));if(k1===k0||$("keys").hidden!==k0)problems.push("? does not toggle the overview");
+    const ws=I.filter(x=>attention(x));focusItem(ws[1],false);cancelAnimationFrame(anim);lens.dispatchEvent(new KeyboardEvent("keydown",{key:"q",bubbles:true}));cancelAnimationFrame(anim);
+    if(focusId!==ws[0].id)problems.push("Q does not go to the previous element");focusItem(null,false)}
+  /* "Später" takes a waiting session out of attention; a new message from it brings it back */
+  {const o=get("s2");doAction(o,"later");if(attention(o))problems.push("Später did not remove attention");
+    o.log.push(["ai","Neue Frage",0]);touch(o);if(!attention(o))problems.push("new message did not end Später");cancelAnimationFrame(anim)}
+  /* a plain click on the canvas closes the detail panel */
+  {open(get("s5"),true);const W2=lens.clientWidth,lr=lens.getBoundingClientRect();let x=lr.left+W2-30,y=lr.top+30,hit=document.elementFromPoint(x,y);
+    if(hit&&!hit.closest(".item,.isname,.edge,.mini,.scale")){hit.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,clientX:x,clientY:y,pointerId:1}));
+      lens.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,clientX:x,clientY:y,pointerId:1}));
+      if(app.classList.contains("side"))problems.push("canvas click did not close the panel")}else close();selWs=null}
+  /* an empty island can be removed and comes back with ⌘Z */
+  {FR.tmp={x:2400,y:2400,w:300,h:240};addIslandUI("tmp");drawIslands();removeIsland("tmp",10,10);ov?.querySelector('[data-t="go"]')?.click();
+    if(FR.tmp)problems.push("empty island not removed");lens.focus();lens.dispatchEvent(new KeyboardEvent("keydown",{key:"z",metaKey:true,bubbles:true}));
+    if(!FR.tmp)problems.push("⌘Z did not restore the island");delete FR.tmp;islNames.tmp?.remove();grips.tmp?.remove();delete islNames.tmp;delete grips.tmp;drawIslands();status.innerHTML=""}
+  /* worktree and model: defaults for new sessions and agents, model choice only where Orbit runs the session */
+  {newSession("orbit");const n=I.at(-1);if(n.wt!=="main"||n.model!=="opus"||n.effort!=="medium")problems.push("new session defaults wrong");
+    const v0="Nur im Haupt-Checkout";send(n,v0);if(n.br!=="main"||n.wtPath)problems.push("a main-checkout session must not create a branch");
+    I.splice(I.indexOf(n),1);n.el.remove();replyId=null;newSession("orbit");const n2=I.at(-1);n2.wt="worktree";render(n2);
+    if(!n2.el.querySelector('.setline [data-a="pick-model"]'))problems.push("new session has no model choice");
+    const v="Cache für Titel";send(n2,v);if(!/^feat\//.test(n2.br)||!n2.wtPath)problems.push("worktree branch not created on request");
+    I.splice(I.indexOf(n2),1);n2.el.remove();replyId=null;
+    /* a folder without git offers no worktree */
+    GIT.orbit=false;newSession("orbit");const n3=I.at(-1);if(n3.el.querySelector('[data-a="pick-wt"]'))problems.push("no-git folder offers a worktree");
+    if(!/ohne Git/.test(n3.el.querySelector(".setline").textContent))problems.push("no-git folder not shown");I.splice(I.indexOf(n3),1);n3.el.remove();replyId=null;GIT.orbit=true;
+    /* model and effort in one menu */
+    {const o=get("s1");open(o,true);const b=$("pMeta").querySelector('[data-a="pick-model"]');doAction(o,"pick-model",b);const n=ov?ov.querySelectorAll("button").length:0;dropOv();close();if(n!==6)problems.push("model menu without effort choices")}
+    newSession("kestrel",true);const ag=I.at(-1);if(ag.wt!=="main"||ag.model!=="sonnet")problems.push("new agent defaults wrong");I.splice(I.indexOf(ag),1);ag.el.remove();replyId=null;
+    open(get("s1"),true);if(!$("pMeta").querySelector('[data-a="pick-model"]'))problems.push("owned session cannot pick model");
+    open(get("s2"),true);if($("pMeta").querySelector('[data-a="pick-model"]'))problems.push("observed session offers model choice");
+    open(get("s4"),true);if(!/Cloud/.test($("pMeta").textContent))problems.push("cloud session does not say so");close();cancelAnimationFrame(anim)}
+  /* PR chips link to GitHub in a new tab */
+  {const a=get("s4").el.querySelector("a.pr");if(!a||a.target!=="_blank"||!/github\.com\/.+\/pull\/31$/.test(a.href))problems.push("PR chip is not a GitHub link")}
+  /* leave no trace: drafts removed, nothing selected, nothing open, camera back */
+  cancelAnimationFrame(anim);if(app.classList.contains("side"))close();replyId=null;hoverId=null;focusId=null;pointerWs=null;
+  I.filter(o=>o.draft).forEach(o=>{I.splice(I.indexOf(o),1);o.el.remove()});document.activeElement?.blur?.();
+  Object.assign(cam,saved);apply();I.forEach(render);layout();
+  const res={ok:!problems.length,replyScenarios:scen,problems};document.documentElement.dataset.check=JSON.stringify(res);console.info("Orbit layout self-check",res);return res;
+}
+/* The self-check changes state (it creates sessions, opens panels, moves the camera). It runs only on request
+   (?check in the URL, used by the headless test) and never saves anything. */
+let checking=false;
+if(/[?&]check\b/.test(location.search))setTimeout(()=>{checking=true;try{selfCheck()}finally{checking=false}},400);
+setTimeout(()=>pulse(L[0]),900);
+</script>
