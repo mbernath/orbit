@@ -50,7 +50,7 @@ Shortcuts act when the board has focus and nothing is being typed. A button on t
 | ? | shortcut overview on/off (anywhere, except while typing) |
 | Esc | closes the innermost thing: menu, reply, rename, panel, selection. Never zooms. |
 
-In a reply field: Enter sends, ⇧Enter new line, ⌘Enter allows a pending request, ⌘⇧Enter sends and moves on (see below), Esc leaves — in an empty field Esc closes the panel at once.
+In a reply field: Enter sends, ⇧Enter new line, ⌘Enter allows a pending request, ⌘⇧Enter sends and moves on (see below), ⌘. stops Claude's turn (ADR-0044), Esc leaves — in an empty field Esc closes the panel at once.
 
 The panel's reply field usually has focus, so keys in the panel always carry ⌘ or ⌥; single letters never act there. Keys that work everywhere are ⌘⇧ combinations: ⌘⇧S, ⌘⇧F, ⌘⇧⌫ (and ⌘⇧Enter in the reply field). Single-letter keys stay board keys. Rare or irreversible actions (Merge …, Take over …, Remove island …) get no key: Tab and Enter reach them (ADR-0043).
 
@@ -61,6 +61,7 @@ The panel's reply field usually has focus, so keys in the panel always carry ⌘
 - Width: drag the left edge (360 px up to 90 % of the window); double-click on the edge restores the default. ⤢ in the header or ⌘⇧F (also while typing) switches to full width — the board is hidden, text stays at about 80 characters per line. Width and full mode are remembered in this browser and survive switching elements.
 - Reply field: grows with its text up to about 40 % of the panel's height, then scrolls; a handle above it drags it taller, and that height is remembered.
 - ⌘⇧Enter in the reply field sends and opens the next element that needs the user (same order as W) in the panel, cursor in its reply field, width unchanged. Nothing left: the panel closes, the board has focus, the status line says "All done". If sending fails, it stays and keeps the text.
+- While a session Orbit runs works, the conversation ends in a working line: a breathing dot, what the turn does ("Reading stream.ts …", "Running bun test …", "Thinking …"), the time since the turn began, and **Stop** (ADR-0044). Stop, or ⌘. in the reply field, ends the turn; the session stays and reads idle, the transcript notes "Stopped by you", and queued messages come back into the reply field before any draft. A pending question shows its own row instead; observed sessions show no working line.
 - Everything the bubble offers is also in the panel (principle 8).
 - Copy on hover: hovering a message shows ⧉ beside it, which copies the message as its Markdown source ("Copy as Markdown"); hovering a code block — in messages and in documents, also on the board — shows ⧉ in its corner, which copies just the code. The icon turns ✓ ("Copied") for a moment. Copying never opens the editor.
 - File references in text (links to local files, paths in inline code, ADR-0030) are dotted links; a click opens the file — code in VS Code at the line, HTML, PDFs, images and folders in their default app. Errors go to the status line.

@@ -31,6 +31,7 @@ export const KEYS = [
   { id: "newline", keys: "⇧Enter", does: "New line", where: "field" },
   { id: "allow", keys: "⌘Enter", does: "Allow the pending request", where: "field" },
   { id: "send-next", keys: "⌘⇧Enter", does: "Send and open the next that needs you", where: "field" },
+  { id: "stop", keys: "⌘.", does: "Stop Claude's turn", where: "field" },
   { id: "paste", keys: "⌘V", does: "Paste a file as attachment", where: "field" },
   { id: "island", keys: "Click island name", does: "Island: defaults, clean up", where: "pointer" },
   { id: "new-island", keys: "Double-click free space", does: "New island", where: "pointer" },

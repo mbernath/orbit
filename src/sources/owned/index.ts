@@ -224,15 +224,17 @@ export function createOwnedSource(opts: { bin?: string; claudeHome?: string } = 
       },
     },
     {
+      // Stop (ADR-0044): interrupts the running turn, keeps the process and the session; queued messages come back
+      // to the board, which puts them into the reply field again.
       id: "owned.stop",
       risk: "local",
       allowedActors: ["board"],
       validate: known,
       async run(i: { id: string }) {
-        await live.get(i.id)?.stop();
-        live.delete(i.id);
+        const dropped = (await live.get(i.id)?.interrupt()) ?? [];
+        await ctx.act("claude.stopped", { id: i.id }); // no Stop hook comes for an interrupt
         ctx.emit();
-        return { ok: true };
+        return { ok: true, data: { dropped } };
       },
     },
   ];
@@ -270,6 +272,9 @@ export function createOwnedSource(opts: { bin?: string; claudeHome?: string } = 
         running: s?.running ?? false,
         queued: s?.queued ?? 0,
         lastText: st?.lastText ?? null,
+        /** what the running turn does and since when (ADR-0044) */
+        activity: st?.status === "working" ? st.activity ?? "Working" : null,
+        since: s?.since ?? null,
         permission: p && {
           tool: p.tool, description: p.description, detail: truncate(JSON.stringify(p.input), 300),
           kind: p.kind, questions: p.questions ?? null, plan: p.plan ?? null, // ADR-0028

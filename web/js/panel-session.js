@@ -6,7 +6,7 @@ import { loadConversation, runAction } from "./api.js";
 import { copySource } from "./copy.js";
 import { tip } from "./key-table.js";
 import { renderMarkdown } from "./markdown.js";
-import { mountReply, observedFoot, ownedRows } from "./panel-owned.js";
+import { mountReply, observedFoot, ownedRows, paintActivity } from "./panel-owned.js";
 import { store } from "./store.js";
 import { ago, closest, esc, folderName } from "./util.js";
 import { SESSION_STATUS } from "./views/labels.js";
@@ -38,7 +38,7 @@ export function mountSession(root, ref, ctx) {
   const part = (/** @type {string} */ sel) => /** @type {HTMLElement} */ (root.querySelector(sel));
   let confirmMerge = false;
   let confirmTakeover = false;
-  /** @type {{ focus: () => void, update: () => void } | null} */
+  /** @type {{ focus: () => void, update: () => void, stop: () => Promise<void> } | null} */
   let reply = null;
   /** @type {Conversation | null} */
   let conv = null;
@@ -76,6 +76,12 @@ export function mountSession(root, ref, ctx) {
     };
   }
 
+  /** queued messages a stop took back into the reply field @param {string[]} texts */
+  function dropPending(texts) {
+    pending.set(ref, (pending.get(ref) ?? []).filter((t) => !texts.includes(t)));
+    showConversation(false);
+  }
+
   /** @param {Entity} e @param {number} at */
   async function fetchConversation(e, at) {
     const entries = await loadConversation(/** @type {any} */ (e.data).id);
@@ -94,6 +100,7 @@ export function mountSession(root, ref, ctx) {
     const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
     const waiting = (pending.get(ref) ?? []).map((t) => `<div class="msg you pending" title="Sending to Claude …">${esc(t)}</div>`).join("");
     box.innerHTML = (conv ? conv.html.replace(`<p class="p-note">No messages yet.</p>`, waiting ? "" : "$&") : "") + waiting;
+    paintActivity(/** @type {HTMLElement} */ (box), control());
     if (toEnd || atEnd || !box.scrollTop) box.scrollTop = box.scrollHeight;
   }
 
@@ -108,9 +115,10 @@ export function mountSession(root, ref, ctx) {
     // reply field only while Orbit runs the session; mounted once so typed text survives updates
     const foot = part(".p-foot");
     const ctl = controlOf(e);
-    if (ctl && !reply) reply = mountReply(foot, control, ctx.onChange, { sending: addPending, next: () => ctx.onNext(ref), close: ctx.closeFromReply });
+    if (ctl && !reply) reply = mountReply(foot, control, ctx.onChange, { sending: addPending, dropped: dropPending, next: () => ctx.onNext(ref), close: ctx.closeFromReply });
     if (!ctl && reply) (foot.innerHTML = ""), (reply = null);
     reply?.update();
+    paintActivity(part(".p-conv"), ctl);
     // observed: why there is no reply field, where the user tries to type (written only on change)
     const obs = ctl ? "" : observedFoot(e, confirmTakeover);
     if (!ctl && foot.dataset.html !== obs) (foot.innerHTML = obs), (foot.dataset.html = obs);
@@ -123,6 +131,7 @@ export function mountSession(root, ref, ctx) {
     const b = closest(ev.target, "[data-p]");
     const what = b?.dataset.p;
     if (!b || !what) return;
+    if (what === "stop") return reply?.stop();
     if (what === "merge") return (confirmMerge = true), update();
     if (what === "merge-cancel") return (confirmMerge = false), update();
     if (what === "takeover") return (confirmTakeover = true), update();

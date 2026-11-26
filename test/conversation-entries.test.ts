@@ -51,3 +51,9 @@ test("Task list progress as data", () => {
   expect(todoProgress({ todos: [{ content: "a", status: "completed" }, { content: "b", status: "in_progress" }] })).toEqual({ done: 1, total: 2, current: "b" });
   expect(todoProgress({ todos: [] })).toBeNull();
 });
+
+test("An interrupted turn reads as a note, not as the user's words (ADR-0044)", () => {
+  expect(systemNote("[Request interrupted by user]")).toBe("Stopped by you");
+  expect(systemNote("[Request interrupted by user for tool use]")).toBe("Stopped by you");
+  expect(systemNote("Please [Request interrupted by user]")).toBeNull();
+});

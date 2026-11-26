@@ -15,6 +15,8 @@ const short = (s: string) => truncate(oneLine(s), 200);
  */
 export function systemNote(text: string): string | null {
   const t = text.trim();
+  // Esc in a terminal, or Stop in Orbit (ADR-0044): the CLI notes it as a user message
+  if (/^\[Request interrupted by user[^\]]*\]$/.test(t)) return "Stopped by you";
   if (t.startsWith("<task-notification>")) {
     const failed = /^(failed|error|killed)$/i.test(tag(t, "status") ?? "");
     const summary = tag(t, "summary") ?? "";

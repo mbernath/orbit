@@ -70,3 +70,4 @@ An ADR is **not edited** when the decision changes. It gets the status `Supersed
 | [0040](0040-file-preview.md) | A click on a file reference previews it in Orbit | Accepted |
 | [0042](0042-island-panel-and-add-menu.md) | "+" only adds; the island gets a panel; one dialog component | Accepted |
 | [0043](0043-keys-by-context.md) | Keys by where they work; one table; Snooze is ⌘⇧S | Accepted |
+| [0044](0044-working-line-and-stop.md) | Owned sessions: a working line in the panel; Stop interrupts the turn, not the process | Accepted |

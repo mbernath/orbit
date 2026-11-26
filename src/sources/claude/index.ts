@@ -161,6 +161,18 @@ export function createClaudeSource(opts: { projectsDir?: string; claudeHome?: st
       },
     },
     {
+      // The user stopped the turn of a session Orbit runs (ADR-0044). Claude Code sends no Stop hook for an interrupt,
+      // so without this the session would read "working" until its next turn. Idle and seen: nothing new to look at.
+      id: "claude.stopped",
+      risk: "local",
+      allowedActors: ["system"],
+      validate: hasId,
+      run(i: { id: string }) {
+        sql(`UPDATE claude_sessions SET status = 'idle', acknowledged = 1, question = NULL, pending_tool = NULL, updated_at = ? WHERE id = ? AND status IN ('working', 'waiting')`, Date.now(), i.id);
+        return { ok: true };
+      },
+    },
+    {
       id: "claude.import",
       risk: "local",
       allowedActors: ["board", "system"],

@@ -58,7 +58,14 @@ export function fakeClaude(hook: (body: object) => Promise<unknown>): Spawner {
             return;
           }
           text("On it.");
-          if (!longTurn) result("On it."); // "… long …": keeps working
+          if (!longTurn) result("On it."); // "… long …": keeps working, running a command
+          else say({ type: "assistant", session_id: id, message: { content: [{ type: "tool_use", name: "Bash", input: { command: "bun test" } }] } });
+        }
+        if (m.type === "control_request" && m.request?.subtype === "interrupt") {
+          // like the real CLI (test/fixtures/claude-stream/interrupt.jsonl): confirmed, noted, the turn ends as an error
+          say({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { still_queued: [] } } });
+          say({ type: "user", session_id: id, message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] } });
+          return say({ type: "result", subtype: "error_during_execution", is_error: true, session_id: id });
         }
         if (m.type === "control_response") {
           const answers = m.response.response.updatedInput?.answers;

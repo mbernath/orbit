@@ -36,7 +36,7 @@ export type SpawnCall = { cmd: string[]; cwd?: string; env?: Record<string, stri
 
 /**
  * A spawner that plays recorded streams instead of starting Claude Code. Each process takes the next recording.
- * A recording is cut after every `result` and `control_request`; each line written to stdin releases the next part,
+ * A recording is cut after every `result` and `control_request` and before every `control_response`; each line written to stdin releases the next part,
  * so the test drives the turns like the CLI would. Closing stdin ends the process with code 0.
  */
 export function replaySpawner(...recordings: string[][]) {
@@ -45,8 +45,10 @@ export function replaySpawner(...recordings: string[][]) {
     const lines = recordings.shift() ?? [];
     const parts: string[][] = [[]];
     for (const l of lines) {
-      (parts.at(-1) as string[]).push(l);
       const t = JSON.parse(l).type;
+      // a control_response answers a request Orbit wrote (an interrupt): it comes after that write
+      if (t === "control_response" && (parts.at(-1) as string[]).length) parts.push([]);
+      (parts.at(-1) as string[]).push(l);
       if (t === "result" || t === "control_request") parts.push([]);
     }
     const call: SpawnCall = { cmd, cwd: opts.cwd, env: opts.env, writes: [], ended: false };

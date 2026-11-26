@@ -1,6 +1,6 @@
 // What a line of `claude -p --output-format stream-json` means for an owned session (ADR-0019).
 // Pure: state in, state out, so it is tested against recorded streams (test/fixtures/claude-stream).
-import { splitTitle } from "../../core/util";
+import { oneLine, splitTitle, truncate } from "../../core/util";
 
 export type Question = { question: string; header: string; multiSelect: boolean; options: { label: string; description: string }[] };
 
@@ -27,9 +27,11 @@ export type RunState = {
   error: string | null;
   /** the last plan Claude wrote to `.claude/plans/` (newer CLIs send ExitPlanMode without the plan) */
   planText?: string | null;
+  /** what the running turn does right now, as a short line ("Reading stream.ts"); null between turns (ADR-0044) */
+  activity?: string | null;
 };
 
-export const initialRun = (): RunState => ({ status: "idle", model: null, lastText: null, permission: null, usage: null, error: null });
+export const initialRun = (): RunState => ({ status: "idle", model: null, lastText: null, permission: null, usage: null, error: null, activity: null });
 
 /** Content of a Write to a plan file in an assistant message, if any. */
 function planWritten(content: any[]): string | null {
@@ -73,8 +75,20 @@ export function applyLine(state: RunState, line: string): StreamEvent {
       const text = splitTitle(joined).rest.trim();
       const plan = planWritten(content);
       // an open request stays open: a parallel tool's or a subagent's message can arrive while Claude asks
-      const next: RunState = { ...state, status: state.permission ? "permission" : "working",...(text ? { lastText: text } : {}), ...(plan ? { planText: plan } : {}) };
+      const next: RunState = {
+        ...state,
+        status: state.permission ? "permission" : "working",
+        activity: activityOf(content.at(-1)) ?? state.activity ?? null,
+        ...(text ? { lastText: text } : {}),
+        ...(plan ? { planText: plan } : {}),
+      };
       return { kind: "state", state: next };
+    }
+    case "user": {
+      // a tool result came back: Claude reads it and decides what comes next
+      const content = Array.isArray(m.message?.content) ? m.message.content : [];
+      const result = content.some((b: any) => b?.type === "tool_result");
+      return { kind: "state", state: result && state.status !== "idle" ? { ...state, activity: "Thinking" } : state };
     }
     case "control_request": {
       if (m.request?.subtype !== "can_use_tool") return { kind: "state", state };
@@ -101,12 +115,38 @@ export function applyLine(state: RunState, line: string): StreamEvent {
       const error = m.is_error ? `Turn failed: ${String(m.result ?? m.subtype ?? "unknown").slice(0, 200)}` : null;
       const result = typeof m.result === "string" ? splitTitle(m.result).rest.trim() : "";
       const lastText = !m.is_error && result ? result : state.lastText;
-      return { kind: "turn-end", state: { ...state, status: "idle", permission: null, error, lastText } };
+      return { kind: "turn-end", state: { ...state, status: "idle", permission: null, error, lastText, activity: null } };
     }
     default:
       return { kind: "state", state };
   }
 }
+
+const base = (p: unknown) => String(p ?? "").split(/[/\\]/).filter(Boolean).pop() ?? "";
+const arg = (s: unknown) => truncate(oneLine(String(s ?? "")), 80);
+
+/** What a content block of Claude's message says about the running turn, as a short line; null when it says nothing. */
+export function activityOf(b: any): string | null {
+  if (b?.type === "thinking") return "Thinking";
+  if (b?.type === "text") return b.text?.trim() ? "Writing" : null;
+  if (b?.type !== "tool_use") return null;
+  const i = b.input ?? {};
+  switch (b.name) {
+    case "Read": return `Reading ${base(i.file_path)}`;
+    case "Edit": case "MultiEdit": case "NotebookEdit": return `Editing ${base(i.file_path ?? i.notebook_path)}`;
+    case "Write": return `Writing ${base(i.file_path)}`;
+    case "Bash": return `Running ${arg(i.command)}`;
+    case "Grep": case "Glob": return `Searching ${arg(i.pattern)}`;
+    case "WebSearch": return `Searching the web: ${arg(i.query)}`;
+    case "WebFetch": return `Fetching ${arg(i.url)}`;
+    case "Task": case "Agent": return `Agent: ${arg(i.description)}`;
+    case "TodoWrite": return "Updating the task list";
+    default: return `Using ${arg(b.name || "a tool")}`;
+  }
+}
+
+/** Interrupts the running turn; the process and the session stay (probed 2026-11-26, ADR-0044). */
+export const interruptLine = (requestId: string) => JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "interrupt" } });
 
 /** A message from the user, as the CLI reads it on stdin. */
 export const userLine = (text: string, images: { mediaType: string; data: string }[] = []) =>
