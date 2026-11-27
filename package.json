@@ -14,7 +14,8 @@
     "typecheck": "tsc -p .",
     "verify": "tsc -p . && bun test",
     "test:e2e": "playwright test",
-    "fresh": "bun scripts/fresh.ts"
+    "fresh": "bun scripts/fresh.ts",
+    "media": "bun scripts/readme-media/capture.ts"
   },
   "engines": {
     "bun": ">=1.1"

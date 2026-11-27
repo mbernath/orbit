@@ -2,6 +2,11 @@
 
 A control centre for AI agents across several workspaces.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/board-dark.png">
+  <img alt="The Orbit board: three islands with sessions that are working, done or waiting for you, a pull request pill and a roadmap list" src="docs/media/board.png">
+</picture>
+
 Orbit shows at a glance which Claude Code sessions are working, finished or **waiting for you** — whether they run in VS Code, Conductor or the terminal. No more switching through tabs and windows to check.
 
 Sessions you run yourself stay yours: Orbit only watches them and never types into them. Sessions you start from the board run through Claude Code's own CLI (`claude -p`), and there you reply, allow tool use and answer questions right on the board ([ADR-0010](docs/adr/0010-observed-and-owned-sessions.md), [ADR-0019](docs/adr/0019-owned-sessions-via-claude-cli.md)).
@@ -76,6 +81,19 @@ The hook never blocks Claude: it sends in the background (two-second timeout) an
 
 Every workspace is an **island** on one infinite canvas; sessions are dots with their name. Drag the background to pan, pinch or ⌘/Ctrl + scroll to zoom: the further in, the more each dot shows — a bubble with its last words, the waiting question, its pull request. Orange means it needs you: waiting, done, CI red or ready to merge. **W** jumps to the next one, **Enter** opens it in the detail panel, **?** lists every key. Drag dots to arrange them; positions are stored, and nothing rearranges itself.
 
+![A short tour: a question waiting, a finished session in the detail panel, a new session started with N that asks to write a file and carries on after Allow](docs/media/tour.gif)
+
+<table>
+  <tr>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/waiting-dark.png"><img alt="A session waiting for permission to run a command" src="docs/media/waiting.png"></picture><br><sub><b>Waiting for you</b> — orange dots, the request right in the bubble.</sub></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/panel-dark.png"><img alt="The detail panel with a session's conversation" src="docs/media/panel.png"></picture><br><sub><b>Detail panel</b> — the conversation, steps folded.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/prs-dark.png"><img alt="An island's pull requests, listed from its PR pill" src="docs/media/prs.png"></picture><br><sub><b>Pull requests</b> — ready to merge or waiting for your review.</sub></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/list-dark.png"><img alt="A roadmap list on an island, open in the panel" src="docs/media/list.png"></picture><br><sub><b>Lists</b> — a script's output as a node on its island.</sub></td>
+  </tr>
+</table>
+
 The **"+"** beside an island's name adds to it: a new session Orbit runs for you (**N**), an agent, a Markdown file or a list. **Clicking the island name** opens the island itself: its folders, the defaults for new sessions, and clean-up — remove done or inactive sessions from the board, tidy the island, and bring back what was removed ([ADR-0042](docs/adr/0042-island-panel-and-add-menu.md)).
 
 Inactive sessions (ended or imported) stay on the board until you remove them. Removed ones stay in the island panel and come back with a click; a session that becomes active again returns on its own. Orbit never deletes transcripts — Claude Code purges those itself after `cleanupPeriodDays` ([ADR-0005](docs/adr/0005-inactive-and-archive.md)).
@@ -148,6 +166,7 @@ bunx playwright install chromium  # once, for the browser tests
 bun run test:e2e  # browser tests (Playwright), each with its own throwaway server
 bun run fresh   # throwaway Orbit on port 4748 with an empty data folder, to try the first run
 bun run fresh --demo  # the same, plus simulated live sessions in your most recent folder
+bun run media   # renders the README's screenshots and tour into docs/media from a made-up demo board (needs ffmpeg, pngquant)
 ```
 
 Architecture decisions are recorded in [docs/adr/](docs/adr/).
