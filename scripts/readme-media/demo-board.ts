@@ -12,6 +12,8 @@ import { fakeClaude } from "../../test/e2e/fake-claude";
 
 export const DEMO_PORT = Number(process.env.ORBIT_DEMO_PORT ?? 47931);
 export const DEMO_TOKEN = "readme-demo-token";
+// "tour": a calm board where every session works and nothing asks for you; capture.ts then sends events through stdin
+const TOUR = process.env.ORBIT_DEMO_SCENE === "tour";
 
 const home = realpathSync(mkdtempSync(join(tmpdir(), "orbit-readme-"))); // macOS: /var is /private/var, and pinned files resolve
 const projects = join(home, "claude-projects");
@@ -64,7 +66,7 @@ const run: Runner = async (cmd, cwd) => {
   if (cmd[0] === "gh" && cmd[1] === "api" && cmd[2] === "user") return ok("alex\n");
   if (cmd[0] === "gh" && cmd[1] === "repo") return ok(JSON.stringify({ squashMergeAllowed: true }));
   if (cmd[0] === "gh" && cmd[1] === "pr" && cmd[2] === "list")
-    return ok(JSON.stringify([
+    return ok(TOUR ? "[]" : JSON.stringify([
       pr(41, "Load map tiles in parallel", "main", "alex", { mergeStateStatus: "CLEAN", reviewDecision: "APPROVED", statusCheckRollup: [{ conclusion: "SUCCESS" }] }),
       pr(44, "Dark mode for the settings page", "sam/dark-settings", "sam", { mergeStateStatus: "BLOCKED", reviewDecision: "REVIEW_REQUIRED", statusCheckRollup: [], reviewRequests: [{ login: "alex" }] }),
       pr(45, "Bump the map SDK", "renovate/map-sdk", "sam", { mergeStateStatus: "BLOCKED", reviewDecision: "REVIEW_REQUIRED", statusCheckRollup: [], reviewRequests: [{ login: "alex" }] }),
@@ -100,6 +102,32 @@ const start = async (id: string, cwd: string, prompt: string, transcriptPath?: s
   await hook({ session_id: id, hook_event_name: "SessionStart", cwd, ...(transcriptPath ? { transcript_path: transcriptPath } : {}) });
   await hook({ session_id: id, hook_event_name: "UserPromptSubmit", cwd, prompt });
 };
+
+if (TOUR) {
+  await start("a1", atlas, "Speed up the first map load", transcript);
+  await start("a3", atlas, "Add offline mode to the map");
+  await start("k2", kestrel, "Move the billing jobs to the queue");
+  await start("k3", kestrel, "Document the webhook payloads");
+  await act("lists.add", { workspaceId: "kestrel", command: join(import.meta.dirname, "..", "orbit-list-demo.sh"), title: "Roadmap" });
+  await act("files.pin", { path: join(notes, "launch-plan.md") });
+  // a session Orbit runs: its first turn ends at once and is marked seen, so it rests until capture.ts writes to it
+  const res = await fetch(`http://127.0.0.1:${DEMO_PORT}/api/actions/owned.start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Orbit-Token": DEMO_TOKEN, Origin: `http://127.0.0.1:${DEMO_PORT}` },
+    body: JSON.stringify({ input: { cwd: notes, text: "Draft the beta announcement", model: "sonnet" } }),
+  }).then((r) => r.json() as Promise<{ data: { id: string } }>);
+  await Bun.sleep(300);
+  await act("claude.ack", { id: res.data.id });
+  console.log(`owned ${res.data.id}`);
+  console.log(`ready http://127.0.0.1:${DEMO_PORT}/ (data: ${home})`);
+  // one JSON line per step: {"hook": {...}} posts a hook event, {"act": [id, input]} runs a board action
+  for await (const line of console) {
+    const step = JSON.parse(line) as { hook?: object; act?: [string, object] };
+    if (step.hook) await hook({ cwd: atlas, ...step.hook }); // the tour's hook events are atlas sessions
+    if (step.act) await act(...step.act);
+  }
+  process.exit(0);
+}
 
 // atlas: one finished with a transcript, one asking for Bash, one at work
 await start("a1", atlas, "Speed up the first map load", transcript);

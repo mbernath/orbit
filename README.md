@@ -81,7 +81,7 @@ The hook never blocks Claude: it sends in the background (two-second timeout) an
 
 Every workspace is an **island** on one infinite canvas; sessions are dots with their name. Drag the background to pan, pinch or ⌘/Ctrl + scroll to zoom: the further in, the more each dot shows — a bubble with its last words, the waiting question, its pull request. Orange means it needs you: waiting, done, CI red or ready to merge. **W** jumps to the next one, **Enter** opens it in the detail panel, **?** lists every key. Drag dots to arrange them; positions are stored, and nothing rearranges itself.
 
-![A short tour: a question waiting, a finished session in the detail panel, a new session started with N that asks to write a file and carries on after Allow](docs/media/tour.gif)
+![A 35-second tour: four sessions work and nothing needs you; one finishes and turns orange, another asks for permission and is allowed right on the board, the finished one is read and marked seen, and the board is calm again](docs/media/tour.gif)
 
 <table>
   <tr>
