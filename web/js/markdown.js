@@ -5,12 +5,14 @@
 import MarkdownIt from "../vendor/markdown-it.js";
 import { codeTarget, linkTarget } from "./file-ref.js";
 import { splitFrontmatter } from "./frontmatter.js";
+import { colorSwatches, swatchCode } from "./md-colors.js";
 import { esc } from "./util.js";
 /** @typedef {import("./file-ref.js").FileRef} FileRef */
 /** @typedef {{ copy?: boolean, base?: string | null }} Env */
 /** @typedef {import("../vendor/markdown-it.js").RenderRule} RenderRule */
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
+colorSwatches(md); // colour codes get a swatch (ADR-0045)
 const isHttp = (/** @type {string | null} */ href) => /^https?:\/\//i.test(href ?? "");
 
 // Task lists: "- [ ] text" / "- [x] text" become a disabled checkbox; the item gets class "task".
@@ -105,14 +107,14 @@ const linkOpen = (tokens, idx, options, env, self) => {
   t.attrSet("rel", "noopener");
   return self.renderToken(tokens, idx, options);
 };
-/** Inline code that names a file opens it, too. @type {RenderRule} */
+/** Inline code that names a file opens it, too; outside links, its colour codes get a swatch (ADR-0045). @type {RenderRule} */
 const codeInline = (tokens, idx, _options, env) => {
   const content = tokens[idx]?.content ?? "";
-  const code = `<code>${esc(content)}</code>`;
   const before = tokens.slice(0, idx).map((t) => t.type);
   const inLink = before.lastIndexOf("link_open") > before.lastIndexOf("link_close"); // already inside an anchor
   const file = inLink ? null : codeTarget(content, /** @type {Env} */ (env).base);
-  return file ? `${fileAnchor(file, /** @type {Env} */ (env).base)}${code}</a>` : code;
+  if (file) return `${fileAnchor(file, /** @type {Env} */ (env).base)}<code>${esc(content)}</code></a>`;
+  return `<code>${inLink ? esc(content) : swatchCode(esc(content))}</code>`;
 };
 /** @type {RenderRule} */
 const linkClose = (tokens, idx, options, _env, self) =>

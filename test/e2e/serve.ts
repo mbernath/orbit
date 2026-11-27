@@ -31,7 +31,7 @@ writeFileSync(
     { type: "user", message: { content: "Make the import faster" } },
     { type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "src/import.ts" } }] } },
     { type: "assistant", message: { content: [{ type: "tool_use", name: "Grep", input: { pattern: "readFileSync" } }] } },
-    { type: "assistant", message: { content: [{ type: "text", text: "The import now reads **only the end** of the file.\n\n```sh\nbun run import --tail\n```" }] } },
+    { type: "assistant", message: { content: [{ type: "text", text: "The import now reads **only the end** of the file.\n\n```sh\nbun run import --tail\n```\n\nProgress bar in `#1d9e75`." }] } },
     { type: "user", message: { content: "<task-notification>\n<status>completed</status>\n<summary>Tests passing</summary>\n</task-notification>" } },
   ].map((l) => JSON.stringify(l)).join("\n") + "\n",
 );

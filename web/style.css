@@ -644,3 +644,13 @@ dialog.dlg.preview :is(.dlg-form, .dlg-body) { gap: 0; max-height: calc(100vh - 
 .p-island .pa-item { display: flex; gap: 12px; align-items: baseline; }
 .pa-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pa-when { flex: none; font-size: 12px; color: var(--muted); }
+/* Colour swatches in rendered text (ADR-0045); a checkerboard under the colour shows transparency */
+.swatch { display: inline-block; width: .8em; height: .8em; padding: 0; margin: 0 .25em 0 0; vertical-align: -.05em;
+  border-radius: 3px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); cursor: pointer;
+  background: linear-gradient(var(--c), var(--c)), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%) 0 0 / 6px 6px; }
+.swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.color-pop { min-width: 180px; z-index: 30; }
+.color-big { height: 56px; margin: 2px 2px 4px; border-radius: 5px; border: 1px solid var(--border);
+  background: linear-gradient(var(--c), var(--c)), repeating-conic-gradient(#ccc 0 25%, #fff 0 50%) 0 0 / 10px 10px; }
+.color-pop button { font-family: ui-monospace, monospace; font-size: 12.5px; }
+.color-pop button.done::after { content: "  ✓ Copied"; color: var(--muted); font-family: system-ui, sans-serif; }

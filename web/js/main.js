@@ -26,6 +26,7 @@ import { store } from "./store.js";
 import { $, closest } from "./util.js";
 import "./copy.js";
 import "./file-links.js";
+import "./color-pop.js";
 import { syncHookNotice } from "./hook-notice.js";
 import { installFirstRun, renderFirstRun } from "./first-run.js";
 import { installHints, update as updateHints } from "./hints.js";

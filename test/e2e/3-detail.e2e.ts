@@ -216,7 +216,7 @@ test("Copy buttons on hover: a bubble as Markdown, a code block on its own, also
   await ai.hover();
   await expect(copyMsg).toHaveCSS("opacity", "1");
   await copyMsg.click();
-  expect(await clipboard()).toBe("The import now reads **only the end** of the file.\n\n```sh\nbun run import --tail\n```");
+  expect(await clipboard()).toBe("The import now reads **only the end** of the file.\n\n```sh\nbun run import --tail\n```\n\nProgress bar in `#1d9e75`.");
   await expect(copyMsg).toHaveAttribute("title", "Copied");
   await ai.locator(".code").hover();
   await ai.locator('[data-copy="code"]').click();
@@ -313,4 +313,22 @@ test("A document's frontmatter shows as a key/value table above the text, and st
   await expect(panel(page).locator(".p-doc h1")).toHaveText("Notes");
   expect(readFileSync(path, "utf8")).toBe(text);
   if (process.env.SHOT) await panel(page).screenshot({ path: process.env.SHOT });
+});
+
+test("A colour code in the conversation shows a swatch; its popover copies the colour as rgb (ADR-0045)", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await el(page, s1).locator("[data-dot]").click();
+  const sw = panel(page).locator(".msg.ai button.swatch");
+  await expect(sw).toHaveAttribute("title", "#1d9e75 · rgb(29, 158, 117) · hsl(161, 69%, 37%)");
+  await expect(panel(page).locator(".msg.ai p code")).toHaveText("#1d9e75");
+  await sw.click();
+  const pop = page.locator(".color-pop");
+  await expect(pop.locator("button")).toHaveText(["#1d9e75", "rgb(29, 158, 117)", "hsl(161, 69%, 37%)"]);
+  await page.screenshot({ path: test.info().outputPath("color-pop.png") });
+  await pop.getByRole("button", { name: "rgb(29, 158, 117)" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("rgb(29, 158, 117)");
+  await page.keyboard.press("Escape");
+  await expect(pop).toBeHidden();
+  await expect(panel(page)).toBeVisible(); // Escape closed the popover only
+  await expect(sw).toBeFocused();
 });

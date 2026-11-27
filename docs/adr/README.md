@@ -71,3 +71,4 @@ An ADR is **not edited** when the decision changes. It gets the status `Supersed
 | [0042](0042-island-panel-and-add-menu.md) | "+" only adds; the island gets a panel; one dialog component | Accepted |
 | [0043](0043-keys-by-context.md) | Keys by where they work; one table; Snooze is ⌘⇧S | Accepted |
 | [0044](0044-working-line-and-stop.md) | Owned sessions: a working line in the panel; Stop interrupts the turn, not the process | Accepted |
+| [0045](0045-colour-swatches-in-text.md) | Colour codes in rendered text get a swatch with a copy popover | Accepted |
